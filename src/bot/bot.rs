@@ -151,7 +151,7 @@ impl Bot {
         }
 
         debug!("Request sent: {:?}", request);
-        // 等待响应，此时不持有任何锁
+
         match resp_rx.await {
             Ok(response) => {
                 debug!("Response received, cmd: {}, seq: {}", response.cmd, response.seq);
