@@ -14,7 +14,7 @@ use tokio::task::JoinHandle;
 use tonic::Status;
 use crate::bot::friend::Friend;
 use crate::bot::group::{Group, GroupAPITrait};
-use crate::kritor::server::kritor_proto::{common, GetGroupInfoRequest, GetGroupInfoResponse, GetGroupListRequest, GetGroupListResponse, GetGroupMemberInfoRequest, GetGroupMemberInfoResponse, GetGroupMemberListResponse, GroupInfo, GroupMemberInfo, NoticeEvent, RequestEvent, SendMessageRequest, SendMessageResponse};
+use crate::kritor::server::kritor_proto::*;
 use crate::{err, kritor_err};
 use crate::kritor::server::kritor_proto::common::{Contact, Element};
 use crate::kritor::server::kritor_proto::get_group_member_info_request::Target;
