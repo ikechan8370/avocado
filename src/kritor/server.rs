@@ -1,9 +1,11 @@
+use std::collections::HashMap;
 use std::error::Error;
 use std::io::ErrorKind;
 use std::pin::Pin;
 use std::sync::Arc;
-use log::{error, info};
-use tokio::sync::mpsc;
+use std::time::Duration;
+use log::{debug, error, info};
+use tokio::sync::{mpsc, Notify, RwLock};
 use tokio_stream::Stream;
 use tokio_stream::StreamExt;
 use tokio_stream::wrappers::ReceiverStream;
@@ -14,10 +16,12 @@ use kritor_proto::reverse_service_server::ReverseService;
 use tokio::sync::broadcast;
 use once_cell::sync::Lazy;
 use tokio::sync::Mutex;
-use crate::kritor::api::REQUEST_QUEUE;
+use tokio::time::sleep;
+use crate::bot::bot::Bot;
 use crate::kritor::server::kritor_proto::notice_event::Notice;
 use crate::kritor::server::kritor_proto::{NoticeEvent, RequestEvent};
 use crate::kritor::server::kritor_proto::event_structure::Event;
+use crate::service::register::listen_to_events;
 
 pub mod kritor_proto {
     tonic::include_proto!("kritor.event");
@@ -38,23 +42,9 @@ pub mod kritor_proto {
     }
 }
 
+static NOTIFY: Notify = Notify::const_new();
 
-pub static MESSAGE_CHANNEL: Lazy<Mutex<(broadcast::Sender<common::PushMessageBody>, broadcast::Receiver<common::PushMessageBody>)>> = Lazy::new(|| {
-    let (sender, receiver) = broadcast::channel(100);
-    Mutex::new((sender, receiver))
-});
-
-pub static NOTICE_CHANNEL: Lazy<Mutex<(broadcast::Sender<NoticeEvent>, broadcast::Receiver<NoticeEvent>)>> = Lazy::new(|| {
-    let (sender, receiver) = broadcast::channel(100);
-    Mutex::new((sender, receiver))
-});
-
-pub static REQUEST_CHANNEL: Lazy<Mutex<(broadcast::Sender<RequestEvent>, broadcast::Receiver<RequestEvent>)>> = Lazy::new(|| {
-    let (sender, receiver) = broadcast::channel(100);
-    Mutex::new((sender, receiver))
-});
-
-pub static TX_GLOBAL: Lazy<Arc<Mutex<Option<mpsc::Sender<Result<common::Request, Status>>>>>> = Lazy::new(|| Arc::new(Mutex::new(None)));
+pub static BOTS: Lazy<Arc<Mutex<HashMap<String, Arc<RwLock<Bot>>>>>> = Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
 
 #[derive(Debug, Default)]
 pub struct EventListener {}
@@ -70,24 +60,41 @@ impl EventService for EventListener {
     }
 
     async fn register_passive_listener(&self, request: Request<Streaming<EventStructure>>) -> Result<Response<RequestPushEvent>, Status> {
-        info!("Received passive listener registration");
-        info!("Request: {:?}", request.metadata());
+        debug!("Received passive listener registration");
+        debug!("Request: {:?}", request.metadata());
+        let uid = request.metadata().get("kritor-self-uid").unwrap().to_str().unwrap().to_string();
+        // wait until bot is created through reverse stream
+        loop {
+            {
+                if BOTS.lock().await.contains_key(&uid) {
+                    break;
+                }
+            }
+            NOTIFY.notified().await;
+        }
+        debug!("Bot found: {}", uid);
+        let bot = {
+            let bots = BOTS.lock().await;
+            bots.get(&uid).unwrap().clone()
+        };
         let mut receiving_stream = request.into_inner();
 
         while let Some(event) = receiving_stream.next().await {
             match event {
                 Ok(event) => {
+                    info!("Received event: {:?}", event);
+                    let bot_guard = bot.read().await;
                     match event.event.unwrap() {
                         Event::Message(message) => {
-                            let sender = &MESSAGE_CHANNEL.lock().await.0;
+                            let sender = bot_guard.get_message_sender();
                             let _ = sender.send(message);
                         }
                         Event::Notice(notice) => {
-                            let sender = &NOTICE_CHANNEL.lock().await.0;
+                            let sender = bot_guard.get_notice_sender();
                             let _ = sender.send(notice);
                         }
                         Event::Request(request) => {
-                            let sender = &REQUEST_CHANNEL.lock().await.0;
+                            let sender = bot_guard.get_request_sender();
                             let _ = sender.send(request);
                         }
                     }
@@ -114,31 +121,51 @@ impl ReverseService for ReverseListener {
     type ReverseStreamStream = ReverseResponseStream;
 
     async fn reverse_stream(&self, request: Request<Streaming<common::Response>>) -> Result<Response<Self::ReverseStreamStream>, Status> {
-        info!("Received reverse stream");
-        info!("Request: {:?}", request.metadata());
-        // let response = request.into_inner().message().await.unwrap().unwrap();
-        // info!("response: {:?}", response);
+        debug!("Received reverse stream");
+        debug!("Request: {:?}", request.metadata());
 
+        let uid = request.metadata().get("kritor-self-uid").unwrap().to_str().unwrap().to_string();
+        let uin = request.metadata().get("kritor-self-uin").unwrap().to_str().unwrap().to_string().parse().unwrap_or(0);
+        // wait until bot is created
+        {
+            let mut bots = BOTS.lock().await;
+            if !bots.contains_key(&uid) {
+                let bot = Bot::new(uin, uid.clone());
+                let bot_ref = Arc::new(RwLock::new(bot));
+                listen_to_events(Arc::clone(&bot_ref)).await;
+                bots.insert(uid.clone(), Arc::clone(&bot_ref));
+                NOTIFY.notify_waiters();
+            }
+        }
+        let bot = {
+            let bots = BOTS.lock().await;
+            Arc::clone(bots.get(&uid).unwrap())
+        };
         let mut in_stream = request.into_inner();
 
         let (tx, rx) = mpsc::channel(128);
-        *TX_GLOBAL.lock().await = Some(tx);
-
+        let mut bot_guard = bot.write().await;
+        let tx_mutex = RwLock::new(Some(tx));
+        bot_guard.set_response_listener(tx_mutex).await;
+        drop(bot_guard);
+        let bot_clone = bot.clone();
         tokio::spawn(async move {
             while let Some(result) = in_stream.next().await {
                 match result {
                     Ok(v) => {
-                        info!("receive response: {:?}", v);
-                        let mut queue = REQUEST_QUEUE.lock().await;
-                        let tx = queue.remove(&v.seq).unwrap();
-                        tx.send(v).expect("queue not exists");
+                        let binding = bot_clone.clone();
+                        tokio::spawn(async move {
+                            debug!("Received: {:?}", v);
+                            let bot_guard = binding.read().await;
+                            let mut queue = bot_guard.get_request_queue().read().await;
+                            let tx = queue.remove(&v.seq).unwrap().1;
+                            tx.send(v).expect("queue not exists");
+                        });
                     },
                     Err(err) => {
                         if let Some(io_err) = match_for_io_error(&err) {
                             if io_err.kind() == ErrorKind::BrokenPipe {
-                                // here you can handle special case when client
-                                // disconnected in unexpected way
-                                eprintln!("\tclient disconnected: broken pipe");
+                                error!("\tclient disconnected: broken pipe");
                                 break;
                             }
                         }
@@ -147,9 +174,12 @@ impl ReverseService for ReverseListener {
                 }
             }
             println!("\treverse_stream ended");
+            BOTS.lock().await.remove(&uid);
         });
-
-        // echo just write the same data that was received
+        tokio::spawn(async move {
+            sleep(Duration::from_secs(3)).await;
+            Bot::init(bot.clone()).await;
+        });
         let out_stream = ReceiverStream::new(rx);
 
         Ok(Response::new(
