@@ -1,13 +1,11 @@
 use std::collections::HashMap;
 use std::sync::{Arc};
-use std::sync::atomic::{AtomicBool, Ordering};
-use log::{debug, info, warn};
+use log::{debug, info};
 use once_cell::sync::Lazy;
 use tokio::runtime::Runtime;
-use tokio::sync::{Mutex, MutexGuard, oneshot, RwLock};
+use tokio::sync::{Mutex, MutexGuard, RwLock};
 use avocado_common::Event;
 use crate::bot::bot::Bot;
-use crate::kritor::server::kritor_proto::common::{Contact, Scene, Sender};
 use crate::LOG_INIT;
 use crate::service::service::{KritorContext, Service};
 use crate::utils::kritor::same_contact_and_sender;
@@ -53,7 +51,7 @@ pub async fn listen_to_events(bot: Arc<RwLock<Bot>>) {
             if let KritorEvent::Message(ref message) = event_arc.as_ref() {
                 let current_contact = message.contact.clone().unwrap();
                 let current_sender = message.sender.clone().unwrap();
-                if let Some((trans_context, _, _)) = con.read().await.iter().find(|(trans_context, contact, sender)| same_contact_and_sender((contact, sender), (&current_contact, &current_sender))) {
+                if let Some((trans_context, _, _)) = con.read().await.iter().find(|(_, contact, sender)| same_contact_and_sender((contact, sender), (&current_contact, &current_sender))) {
                     let trans_service_name = trans_context.current_service_name.read().await;
                     if let Some(trans_service_name) = trans_service_name.as_ref() {
                         // 当前服务就是锁定的trans服务

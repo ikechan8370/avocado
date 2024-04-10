@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::AtomicI32;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 use bytes::Bytes;
 use dashmap::DashMap;
 use futures::channel::oneshot;
@@ -10,14 +10,14 @@ use futures::stream::FuturesUnordered;
 use log::{debug, error, info};
 use prost::Message;
 use rand::Rng;
-use tokio::sync::{broadcast, RwLock, RwLockReadGuard, Semaphore};
+use tokio::sync::{broadcast, RwLock, Semaphore};
 use tokio::sync::mpsc::Sender;
 use tonic::Status;
-use crate::bot::friend::Friend;
+use crate::bot::friend::{Friend, FriendAPITrait};
 use crate::bot::group::{Group, GroupAPITrait};
 use crate::kritor::server::kritor_proto::*;
-use crate::{client_err, err, kritor_err};
-use crate::kritor::server::kritor_proto::common::{Contact, Element, Scene};
+use crate::{err, kritor_err};
+use crate::kritor::server::kritor_proto::common::{Contact, Element};
 use crate::service::service::KritorContext;
 use crate::utils::kritor::same_contact_and_sender;
 
@@ -113,13 +113,32 @@ impl Bot {
                     let group = Group::new(group_info, group_members_map);
                     final_groups.get_or_insert_with(HashMap::new).insert(group_id, group);
                 }
-                info!("Bot initialized");
             }
             Err(err) => {
-                error!("Failed to initialize bot: {:?}", err.error());
+                error!("Failed to initialize groups: {:?}", err.error());
             }
-        } ;
+        };
 
+        let self_guard = self_arc.read().await;
+        info!("Start to get group list");
+        let result = self_guard.get_friend_list(true).await;
+        drop(self_guard);
+        match result {
+            Ok(friends_response) => {
+                let info = friends_response.friends_info;
+                let friends = info.into_iter().map(|info| {
+                    let friend = Friend::new(info);
+                    (friend.inner.uin, friend)
+                }).collect::<HashMap<u64, Friend>>();
+                let mut self_guard = self_arc.write().await;
+                let mut final_friends = self_guard.friends.write().await;
+                final_friends.get_or_insert_with(HashMap::new).extend(friends);
+            }
+            Err(err) => {
+                error!("Failed to initialize friends: {:?}", err.error());
+            }
+        }
+        info!("Bot initialized");
     }
     pub fn get_message_sender(&self) -> &broadcast::Sender<common::PushMessageBody> {
         &self.message_sender
@@ -158,7 +177,7 @@ impl Bot {
     }
 
     pub fn plus_one_sent(&self) {
-        self.sent.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.plus_sent(1)
     }
 
     pub fn plus_sent(&self, delta: i32) {
@@ -169,7 +188,7 @@ impl Bot {
     }
 
     pub fn plus_one_receive(&self) {
-        self.receive.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.plus_receive(1)
     }
 
     pub fn plus_receive(&self, delta: i32) {

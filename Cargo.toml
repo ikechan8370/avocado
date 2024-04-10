@@ -25,8 +25,12 @@ async-trait = "0.1.79"
 ctor = "0.2.7"
 dashmap = "5.5.3"
 regex = "1.10.4"
+imageproc = "0.24.0"
+ab_glyph = "0.2.24"
 avocado_common = { path = "./avocado_common" }
 avocado_macro = { path = "./avocado_macro" }
+base64 = "0.21.7"
+image = "0.25.1"
 
 [build-dependencies]
 tonic-build = "0.11"

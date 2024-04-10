@@ -9,6 +9,7 @@ use crate::kritor::server::kritor_proto::common::{Scene};
 use crate::service::service::{KritorContext, Service};
 use crate::text;
 use crate::utils::time::format_duration;
+use crate::service::service::Elements;
 
 #[derive(Debug, Clone, Default)]
 #[service(

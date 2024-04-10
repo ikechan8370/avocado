@@ -6,7 +6,15 @@ use crate::kritor::server::kritor_proto::*;
 use crate::model::error::Result;
 #[derive(Debug)]
 pub struct Friend {
-    pub inner: crate::kritor::server::kritor_proto::FriendInfo,
+    pub inner: FriendInfo,
+}
+
+impl Friend {
+    pub fn new(inner: FriendInfo) -> Self {
+        Self {
+            inner
+        }
+    }
 }
 
 #[async_trait]

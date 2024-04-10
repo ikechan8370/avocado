@@ -5,7 +5,6 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use log::warn;
-use tokio::sync::oneshot::Sender;
 use tokio::sync::RwLock;
 
 use crate::{client_err, err};
