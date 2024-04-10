@@ -4,7 +4,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 use dashmap::DashMap;
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 use tokio::sync::{mpsc, Notify, RwLock};
 use tokio_stream::Stream;
 use tokio_stream::StreamExt;
@@ -120,13 +120,14 @@ impl ReverseService for ReverseListener {
         debug!("Request: {:?}", request.metadata());
         let (tx, rx) = mpsc::channel(128);
         let uid = request.metadata().get("kritor-self-uid").unwrap().to_str().unwrap().to_string();
+        let version = request.metadata().get("kritor-self-version").map(|m| m.to_str().unwrap().to_string());
         let uin = request.metadata().get("kritor-self-uin").unwrap().to_str().unwrap().to_string().parse().unwrap_or(0);
         // wait until bot is created
         {
             let bots = BOTS.write().await;
             if !bots.contains_key(&uid) {
                 let tx_mutex = Arc::new(Some(tx));
-                let bot = Bot::new(uin, uid.clone(), tx_mutex);
+                let bot = Bot::new(uin, uid.clone(), tx_mutex, version);
                 let bot_ref = Arc::new(RwLock::new(bot));
                 listen_to_events(Arc::clone(&bot_ref)).await;
                 bots.insert(uid.clone(), Arc::clone(&bot_ref));
@@ -149,8 +150,11 @@ impl ReverseService for ReverseListener {
                             debug!("Received: {:?}", v);
                             let bot_guard = binding.read().await;
                             let queue = bot_guard.get_request_queue().clone();
-                            let tx = queue.remove(&v.seq).unwrap().1;
-                            tx.send(v).expect("queue not exists");
+                            if let Some(tx) = queue.remove(&v.seq) {
+                                tx.1.send(v).expect("queue not exists");
+                            } else {
+                                warn!("unknown response: cmd: {}, seq: {}", v.cmd, v.seq);
+                            }
                         });
                     },
                     Err(err) => {

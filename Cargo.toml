@@ -24,6 +24,7 @@ bytes = "1.6.0"
 async-trait = "0.1.79"
 ctor = "0.2.7"
 dashmap = "5.5.3"
+regex = "1.10.4"
 avocado_common = { path = "./avocado_common" }
 avocado_macro = { path = "./avocado_macro" }
 

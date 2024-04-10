@@ -2,6 +2,8 @@ mod kritor;
 mod service;
 mod model;
 mod bot;
+mod utils;
+mod test;
 
 use std::error::Error;
 use once_cell::sync::Lazy;

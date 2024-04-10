@@ -1,6 +1,11 @@
+use std::any::Any;
+use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 
 use async_trait::async_trait;
+use log::warn;
+use tokio::sync::oneshot::Sender;
 use tokio::sync::RwLock;
 
 use crate::{client_err, err};
@@ -19,35 +24,44 @@ pub struct KritorContext {
     pub notice: Option<NoticeEvent>,
     pub request: Option<RequestEvent>,
     pub bot: Arc<RwLock<Bot>>,
+    pub current_service_name: Arc<RwLock<Option<String>>>,
+    pub current_transaction_name: Arc<RwLock<Option<String>>>,
+    pub store: Arc<RwLock<HashMap<String, Box<dyn Any + Send + Sync>>>>
 }
 
 impl KritorContext {
-    pub fn new(event: KritorEvent, bot: Arc<RwLock<Bot>>) -> Self {
+    pub fn new(event: KritorEvent, bot: Arc<RwLock<Bot>>, service_name: String) -> Self {
+        let mut s = Self {
+            r#type: EventType::Message,
+            message: None,
+            notice: None,
+            request: None,
+            bot,
+            current_service_name: Arc::new(RwLock::new(Some(service_name))),
+            current_transaction_name: Arc::new(RwLock::new(None)),
+            store: Arc::new(Default::default()),
+        };
         match event {
-            KritorEvent::Message(message) => Self {
-                r#type: EventType::Message,
-                message: Some(message),
-                notice: None,
-                request: None,
-                bot
+            KritorEvent::Message(message) => {
+                s.message = Some(message);
+                s.r#type = EventType::Message;
             },
-            KritorEvent::Request(request) => Self {
-                r#type: EventType::Message,
-                message: None,
-                notice: None,
-                request: Some(request),
-                bot
+            KritorEvent::Request(request) => {
+                s.request = Some(request);
+                s.r#type = EventType::Request;
             },
-            KritorEvent::Notice(notice) => Self {
-                r#type: EventType::Message,
-                message: None,
-                notice: Some(notice),
-                request: None,
-                bot
+            KritorEvent::Notice(notice) => {
+                s.notice = Some(notice);
+                s.r#type = EventType::Notice;
             },
-        }
+        };
+        s
     }
 
+    pub async fn set_store(&self, key: String, value: Box<dyn Any + Send + Sync>) {
+        let mut store = self.store.write().await;
+        store.insert(key, value);
+    }
     pub async fn reply(&self, elements: Vec<Element>) -> Result<SendMessageResponse> {
         match self.r#type {
             EventType::Message => {
@@ -186,22 +200,53 @@ impl KritorContext {
         }
         self.reply(elements).await
     }
+
+    pub async fn start_transaction(&self, name: String, until: Option<u64>) -> Result<()> {
+        // 通知该Bot接下来的until秒内 收到消息不再进入任何插件，而是进入该service，且保持context不变
+        let mut context = self.clone();
+        let mut trans_name = context.current_transaction_name.write().await;
+        *trans_name = Some(name);
+        let bot = self.bot.clone();
+        // 因为只有message才会进这里，所以这里的message一定是有的
+        Bot::stop_broadcast(bot.clone(), context.clone(), self.message.as_ref().unwrap().contact.clone().unwrap(), self.message.as_ref().unwrap().sender.clone().unwrap()).await?;
+
+        // 等待duration后恢复
+        let self_clone = self.clone();
+        tokio::spawn(async move {
+            let duration = until.unwrap_or(30);
+            tokio::time::sleep(Duration::from_secs(duration)).await;
+            self_clone.stop_transaction().await.unwrap();
+        });
+
+        Ok(())
+    }
+
+    pub async fn stop_transaction(&self) -> Result<()> {
+        let bot = self.bot.clone();
+        // 让bot继续广播并结束本次事务
+        Bot::resume_broadcast(bot, self.message.as_ref().unwrap().contact.clone().unwrap(), self.message.as_ref().unwrap().sender.clone().unwrap()).await
+    }
 }
 
 #[async_trait]
-pub trait Service {
-
-    fn matches(&self, context: KritorContext) -> bool;
-
+pub trait Service: Matchable {
     fn pre_process(&self, context: KritorContext) -> KritorContext {
         context
     }
 
     async fn process(&self, context: KritorContext);
 
-    fn post_process(&self, context: KritorContext) {
-
+    async fn transaction(&self, context: KritorContext) {
+        warn!("default transaction");
     }
+}
+
+#[async_trait]
+pub trait Matchable {
+    fn matches(&self, context: KritorContext) -> bool {
+        false
+    }
+
 }
 
 impl dyn Service + Send + Sync {}
@@ -279,9 +324,11 @@ impl Elements for Vec<Element> {
 #[macro_export]
 macro_rules! text {
     ($x:expr) => {
-        Element {
-            r#type: i32::from(ElementType::Text),
-            data: Some(Data::Text(TextElement { text: $x.into() }))
+        crate::kritor::server::kritor_proto::common::Element {
+            r#type: i32::from(crate::kritor::server::kritor_proto::common::element::ElementType::Text),
+            data: Some(crate::kritor::server::kritor_proto::common::element::Data::Text(
+                crate::kritor::server::kritor_proto::common::TextElement { text: $x.into() })
+            )
         }
     };
 }

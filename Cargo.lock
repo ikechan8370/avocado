@@ -136,6 +136,7 @@ dependencies = [
  "once_cell",
  "prost",
  "rand",
+ "regex",
  "tokio",
  "tokio-stream",
  "tonic",

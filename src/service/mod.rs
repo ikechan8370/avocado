@@ -1,3 +1,4 @@
-mod status;
+
 pub mod register;
-mod service;
+pub mod service;
+mod plugins;

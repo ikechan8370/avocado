@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::AtomicI32;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use bytes::Bytes;
 use dashmap::DashMap;
 use futures::channel::oneshot;
@@ -8,14 +10,16 @@ use futures::stream::FuturesUnordered;
 use log::{debug, error, info};
 use prost::Message;
 use rand::Rng;
-use tokio::sync::{broadcast, RwLock, Semaphore};
+use tokio::sync::{broadcast, RwLock, RwLockReadGuard, Semaphore};
 use tokio::sync::mpsc::Sender;
 use tonic::Status;
 use crate::bot::friend::Friend;
 use crate::bot::group::{Group, GroupAPITrait};
 use crate::kritor::server::kritor_proto::*;
-use crate::{err, kritor_err};
-use crate::kritor::server::kritor_proto::common::{Contact, Element};
+use crate::{client_err, err, kritor_err};
+use crate::kritor::server::kritor_proto::common::{Contact, Element, Scene};
+use crate::service::service::KritorContext;
+use crate::utils::kritor::same_contact_and_sender;
 
 #[derive(Debug)]
 pub struct Bot {
@@ -27,12 +31,22 @@ pub struct Bot {
     uin: Option<u64>,
     uid: Option<String>,
     nickname: Option<String>,
-    groups: Option<HashMap<u64, Group>>,
-    friends: Option<HashMap<u64, Friend>>
+    groups: Arc<RwLock<Option<HashMap<u64, Group>>>>,
+    friends: Arc<RwLock<Option<HashMap<u64, Friend>>>>,
+    kritor_version: Option<String>,
+    // 启动时间时间戳 单位秒
+    up_time: u64,
+    // 已经发送的消息数
+    sent: AtomicI32,
+    // 接收的消息数
+    receive: AtomicI32,
+    // context transaction lock, when it exists for a contact, message won't be sent to handlers for the contact
+    // 对于每个contact是唯一的，也就是每个人同时最多只能进行一个trans
+    transaction_contexts: Arc<RwLock<Vec<(KritorContext, Contact, common::Sender)>>>,
 }
 
 impl Bot {
-    pub fn new(uin: u64, uid: String, tx_mutex: Arc<Option<Sender<Result<common::Request, Status>>>>) -> Self {
+    pub fn new(uin: u64, uid: String, tx_mutex: Arc<Option<Sender<Result<common::Request, Status>>>>, version: Option<String>) -> Self {
         info!("Bot is created: uin: {}, uid: {}", uin, uid);
         let (msender, _mreceiver) = broadcast::channel(100);
         let (nsender, _nreceiver) = broadcast::channel(100);
@@ -45,9 +59,17 @@ impl Bot {
             response_listener: tx_mutex,
             uid: Some(uid),
             nickname: None,
-            groups: Some(HashMap::new()),
+            groups: Arc::new(RwLock::new(Some(HashMap::new()))),
             uin: Some(uin),
-            friends: Some(HashMap::new()),
+            friends: Arc::new(RwLock::new(Some(HashMap::new()))),
+
+            kritor_version: version,
+
+            up_time: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
+            sent: AtomicI32::new(0),
+            receive: AtomicI32::new(0),
+
+            transaction_contexts: Arc::new(RwLock::new(vec![])),
         }
     }
 
@@ -81,15 +103,16 @@ impl Bot {
 
                 debug!("prepare to update bot");
                 let mut self_guard = self_arc.write().await;
-                groups.groups_info.into_iter().for_each(|group_info| {
+                let mut final_groups = self_guard.groups.write().await;
+                for group_info in groups.groups_info {
                     let group_id = group_info.group_id;
                     let group_members_info = results.get(&group_id).expect("Failed to get group members info");
                     let group_members_map = group_members_info.iter().map(|member_info| {
                         (member_info.uin, member_info.clone())
                     }).collect::<HashMap<u64, GroupMemberInfo>>();
                     let group = Group::new(group_info, group_members_map);
-                    self_guard.groups.get_or_insert_with(HashMap::new).insert(group_id, group);
-                });
+                    final_groups.get_or_insert_with(HashMap::new).insert(group_id, group);
+                }
                 info!("Bot initialized");
             }
             Err(err) => {
@@ -122,6 +145,70 @@ impl Bot {
         self.request_sender.subscribe()
     }
 
+    pub fn get_kritor_version(&self) -> Option<String> {
+        self.kritor_version.clone()
+    }
+
+    pub fn get_uptime(&self) -> u64 {
+        self.up_time
+    }
+
+    pub fn get_sent(&self) -> i32 {
+        self.sent.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    pub fn plus_one_sent(&self) {
+        self.sent.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    pub fn plus_sent(&self, delta: i32) {
+        self.sent.fetch_add(delta, std::sync::atomic::Ordering::Relaxed);
+    }
+    pub fn get_receive(&self) -> i32 {
+        self.receive.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    pub fn plus_one_receive(&self) {
+        self.receive.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    pub fn plus_receive(&self, delta: i32) {
+        self.receive.fetch_add(delta, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    pub fn get_groups(&self) -> Arc<RwLock<Option<HashMap<u64, Group>>>> {
+        self.groups.clone()
+    }
+
+    pub fn get_friends(&self) -> Arc<RwLock<Option<HashMap<u64, Friend>>>> {
+        self.friends.clone()
+    }
+
+    /// 对指定的contact停止广播，用于开始trans的情况
+    pub async fn stop_broadcast(self_arc: Arc<RwLock<Self>>, context: KritorContext, contact: Contact, sender: common::Sender) -> crate::model::error::Result<()> {
+        {
+            let self_guard = self_arc.read().await;
+            let mut lock = self_guard.transaction_contexts.write().await;
+            lock.push((context, contact, sender));
+        }
+        Ok(())
+    }
+
+    /// 恢复对指定contact的广播
+    pub async fn resume_broadcast(self_arc: Arc<RwLock<Self>>, contact: Contact, sender: common::Sender) -> crate::model::error::Result<()> {
+        let self_guard = self_arc.read().await;
+        let mut lock = self_guard.transaction_contexts.write().await;
+        // let (context, c) = lock.clone().iter().find(|(ctx, c)| c == &contact).ok_or_else(|| client_err!("Transaction is not locked"))?;
+        // 恢复到该contact的广播
+        lock.clone().iter().position(|(ctx, c, s)| same_contact_and_sender((&contact, &sender), (c, s))).map(|pos| lock.remove(pos));
+        Ok(())
+    }
+
+
+    pub async fn get_broadcast_lock(&self) -> Arc<RwLock<Vec<(KritorContext, Contact, common::Sender)>>> {
+        self.transaction_contexts.clone()
+    }
+
     pub async fn send_request(&self, request: common::Request) -> crate::model::error::Result<common::Response> {
         let (resp_tx, resp_rx) = oneshot::channel();
         let tx_guard = self.response_listener.clone();
@@ -139,6 +226,7 @@ impl Bot {
         match resp_rx.await {
             Ok(response) => {
                 debug!("Response received, cmd: {}, seq: {}", response.cmd, response.seq);
+                self.plus_one_sent();
                 Ok(response)
             },
             Err(e) => kritor_err!(format!("Failed to receive response: {}", e)),
