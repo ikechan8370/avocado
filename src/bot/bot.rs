@@ -4,32 +4,26 @@ use bytes::Bytes;
 use dashmap::DashMap;
 use futures::channel::oneshot;
 use futures::StreamExt;
-use futures::future::join_all;
 use futures::stream::FuturesUnordered;
 use log::{debug, error, info};
 use prost::Message;
 use rand::Rng;
-use tokio::sync::{broadcast, mpsc, Mutex, RwLock, Semaphore};
-use tokio::task::JoinHandle;
+use tokio::sync::{broadcast, RwLock, Semaphore};
+use tokio::sync::mpsc::Sender;
 use tonic::Status;
 use crate::bot::friend::Friend;
 use crate::bot::group::{Group, GroupAPITrait};
 use crate::kritor::server::kritor_proto::*;
 use crate::{err, kritor_err};
 use crate::kritor::server::kritor_proto::common::{Contact, Element};
-use crate::kritor::server::kritor_proto::get_group_member_info_request::Target;
-use crate::model::error::Error;
 
 #[derive(Debug)]
 pub struct Bot {
     message_sender: broadcast::Sender<common::PushMessageBody>,
-    message_receiver: Mutex<broadcast::Receiver<common::PushMessageBody>>,
     notice_sender: broadcast::Sender<NoticeEvent>,
-    notice_receiver: Mutex<broadcast::Receiver<NoticeEvent>>,
     request_sender: broadcast::Sender<RequestEvent>,
-    request_receiver: Mutex<broadcast::Receiver<RequestEvent>>,
-    request_queue: RwLock<DashMap<u32, oneshot::Sender<common::Response>>>,
-    response_listener: RwLock<Option<mpsc::Sender<Result<common::Request, Status>>>>,
+    request_queue: Arc<DashMap<u32, oneshot::Sender<common::Response>>>,
+    response_listener: Arc<Option<Sender<Result<common::Request, Status>>>>,
     uin: Option<u64>,
     uid: Option<String>,
     nickname: Option<String>,
@@ -38,20 +32,17 @@ pub struct Bot {
 }
 
 impl Bot {
-    pub fn new(uin: u64, uid: String) -> Self {
+    pub fn new(uin: u64, uid: String, tx_mutex: Arc<Option<Sender<Result<common::Request, Status>>>>) -> Self {
         info!("Bot is created: uin: {}, uid: {}", uin, uid);
-        let (msender, mreceiver) = broadcast::channel(100);
-        let (nsender, nreceiver) = broadcast::channel(100);
-        let (rsender, rreceiver) = broadcast::channel(100);
+        let (msender, _mreceiver) = broadcast::channel(100);
+        let (nsender, _nreceiver) = broadcast::channel(100);
+        let (rsender, _rreceiver) = broadcast::channel(100);
         Self {
             message_sender: msender,
-            message_receiver: Mutex::new(mreceiver),
             notice_sender: nsender,
-            notice_receiver: Mutex::new(nreceiver),
             request_sender: rsender,
-            request_receiver: Mutex::new(rreceiver),
-            request_queue: RwLock::new(DashMap::new()),
-            response_listener: RwLock::new(None),
+            request_queue: Arc::new(DashMap::new()),
+            response_listener: tx_mutex,
             uid: Some(uid),
             nickname: None,
             groups: Some(HashMap::new()),
@@ -60,12 +51,10 @@ impl Bot {
         }
     }
 
-    pub fn get_request_queue(&self) -> &RwLock<DashMap<u32, oneshot::Sender<common::Response>>> {
+    pub fn get_request_queue(&self) -> &Arc<DashMap<u32, oneshot::Sender<common::Response>>> {
         &self.request_queue
     }
-    pub async fn set_response_listener(&mut self, listener: RwLock<Option<mpsc::Sender<Result<common::Request, Status>>>>) {
-        self.response_listener = listener;
-    }
+
     pub async fn init(self_arc: Arc<RwLock<Self>>) {
         let self_guard = self_arc.read().await;
         let max_concurrent = 20;
@@ -135,19 +124,14 @@ impl Bot {
 
     pub async fn send_request(&self, request: common::Request) -> crate::model::error::Result<common::Response> {
         let (resp_tx, resp_rx) = oneshot::channel();
+        let tx_guard = self.response_listener.clone();
 
-        {
-            let tx_guard = self.response_listener.read().await;
-            if let Some(tx) = tx_guard.as_ref() {
-                {
-                    let mut request_queue = self.request_queue.read().await;
-                    request_queue.insert(request.seq, resp_tx);
-                }
-
-                tx.send(Ok(request.clone())).await.expect("Failed to send request");
-            } else {
-                return err!("Connection not established");
-            }
+        if let Some(tx) = tx_guard.as_ref() {
+            let request_queue = self.request_queue.clone();
+            request_queue.insert(request.seq, resp_tx);
+            tx.send(Ok(request.clone())).await.expect("Failed to send request");
+        } else {
+            return err!("Connection not established");
         }
 
         debug!("Request sent: {:?}", request);

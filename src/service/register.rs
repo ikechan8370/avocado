@@ -1,23 +1,13 @@
 use std::collections::HashMap;
-use std::future::Future;
-use std::ops::Deref;
-use std::pin::Pin;
 use std::sync::{Arc};
-use std::sync::mpsc::Receiver;
 use log::{debug, info};
 use once_cell::sync::Lazy;
 use tokio::runtime::Runtime;
 use tokio::sync::{Mutex, MutexGuard, RwLock};
+use avocado_common::Event;
 use crate::bot::bot::Bot;
-use crate::kritor::server::kritor_proto::common::PushMessageBody;
-use crate::kritor::server::kritor_proto::{NoticeEvent, RequestEvent};
+use crate::LOG_INIT;
 use crate::service::service::{KritorContext, Service};
-
-pub enum Event {
-    Notice,
-    Message,
-    Request,
-}
 
 pub type KritorEvent = crate::kritor::server::kritor_proto::event_structure::Event;
 pub type EventHandler = Arc<dyn Service + Send + Sync>;
@@ -100,7 +90,8 @@ pub fn register_service(service: Arc<dyn Service + Send + Sync>, event: Vec<Even
 }
 
 async fn _register_service(service: Arc<dyn Service + Send + Sync>, event: Vec<Event>, name: String) {
-    info!("Registering service: {}", name);
+    Lazy::force(&LOG_INIT);
+    info!("Registering service \"{}\" with events {:?}", name, event);
     for et in event {
         match et {
             Event::Notice => {
