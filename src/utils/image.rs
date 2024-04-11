@@ -1,12 +1,20 @@
 use std::collections::HashMap;
 use std::fs::File;
+use std::future::Future;
 use std::io::{BufReader, Cursor, Read};
+use std::pin::Pin;
+use std::sync::Arc;
 use ab_glyph::{Font, FontRef, PxScale, PxScaleFont, ScaleFont};
+use dashmap::DashMap;
 use image::{DynamicImage, Rgba, RgbaImage};
 use image::imageops::FilterType;
-use imageproc::drawing::{draw_text_mut, text_size};
+use imageproc::drawing::{draw_filled_circle_mut, draw_filled_rect_mut, draw_text_mut, text_size};
+use imageproc::rect::Rect;
 use lazy_static::lazy_static;
-use log::{error, info};
+use log::{debug, error, info};
+use once_cell::sync::Lazy;
+use tokio::sync::RwLock;
+use unicode_segmentation::UnicodeSegmentation;
 use crate::model::error::Result;
 use zip::ZipArchive;
 use crate::err;
@@ -171,39 +179,79 @@ pub fn overlay_image_with_pure_color(position: (u32, u32), image: &mut RgbaImage
         }
     }
 }
-type FontFn<'font> = fn(char) -> FontRef<'font>;
+type FontFn<'font> = fn(String) -> Pin<Box<dyn Future<Output = FontRef<'font>> + Send + 'font>>;
+
 lazy_static!(
     pub static ref DEFAULT_EMOJI_FONT: FontRef<'static> = FontRef::try_from_slice(include_bytes!("../../resources/font/NotoColorEmoji.ttf")).unwrap();
     pub static ref DEFAULT_NORMAL_FONT: FontRef<'static> = FontRef::try_from_slice(include_bytes!("../../resources/font/SmileySans-Oblique.ttf")).unwrap();
 );
-pub fn select_font_for_char<'font>(c: char) -> FontRef<'font> {
-    if is_emoji(c) {
+pub async fn select_font_for_char<'font>(c: String) -> FontRef<'font> {
+    if is_emoji(c).await {
         DEFAULT_EMOJI_FONT.clone()
     } else {
         DEFAULT_NORMAL_FONT.clone()
     }
 }
 
+pub static EMOJI_MAP: Lazy<Arc<RwLock<DashMap<String, bool>>>> = Lazy::new(|| {
+    let emoji_map = DashMap::new();
+    Arc::new(RwLock::new(emoji_map))
+});
+
 // 用于判断一个字符是否是emoji
-pub fn is_emoji(c: char) -> bool {
-    // ('\u{1F600}'..='\u{1F64F}').contains(&c) || // Emoticons
-    //     ('\u{1F300}'..='\u{1F5FF}').contains(&c) // Misc Symbols and Pictographs, etc.
-    let mut target: [u8; 4] = [0u8; 4];
-    let str = c.encode_utf8(&mut target);
-    emojis::get(str).is_some()
+pub async fn is_emoji(c: String) -> bool {
+    let exist = {
+        let map = EMOJI_MAP.read().await;
+        map.get(&c).map(|value_ref| value_ref.clone())
+    };
+    if let Some(exist) = exist {
+        return exist;
+    }
+    if c.is_ascii() {
+        return false;
+    }
+    // c 是像 \u{E045}这样的字符
+    let is = emojis::get(c.as_str()).is_some() || {
+        let file = File::open("resources/font/openmoji-72x72-color.zip").unwrap();
+        let reader = BufReader::new(file);
+        let mut zip = ZipArchive::new(reader).unwrap();
+        let emoji = emoji_to_unicode_string(c.as_str()).to_uppercase();
+        let filename = format!("{}.png", emoji);
+        let found = zip.by_name(filename.as_str());
+        found.is_ok()
+    };
+    if is {
+        let mut map = EMOJI_MAP.write().await;
+        map.insert(c.clone(), is);
+    }
+    is
 }
 
-pub fn get_emoji_png(emoji_name: char) -> Result<RgbaImage> {
+fn emoji_to_unicode_string(s: &str) -> String {
+    s.chars()
+        .filter_map(|c| {
+            if c.is_ascii() {
+                // 跳过ASCII字符，因为我们只关注Unicode扩展字符
+                None
+            } else {
+                // 将非ASCII字符（Unicode扩展字符）转换为十六进制形式
+                Some(format!("{:X}", c as u32))
+            }
+        })
+        .collect::<Vec<String>>() // 将转换结果收集到Vec<String>中
+        .join("-") // 使用"-"连接各部分
+}
 
+pub fn get_emoji_png(emoji_name: &str) -> Result<RgbaImage> {
     // 打开ZIP文件
     let file = File::open("resources/font/openmoji-72x72-color.zip").unwrap();
     let reader = BufReader::new(file);
     let mut zip = ZipArchive::new(reader)?;
 
     // 尝试从ZIP中找到指定的PNG文件
-    let emoji = format!("{:X}", emoji_name as u32).to_uppercase();
+    let emoji = emoji_to_unicode_string(emoji_name).to_uppercase();
     let filename = format!("{}.png", emoji);
-    info!("Trying to find file: {}", filename);
+    debug!("Trying to find file: {}", filename);
     let png_file = zip.by_name(filename.as_str())?;
     let bytes: Vec<u8> = png_file.bytes().map(|b| b.unwrap()).collect();
     // 使用`image`库加载PNG文件
@@ -212,15 +260,17 @@ pub fn get_emoji_png(emoji_name: char) -> Result<RgbaImage> {
     Ok(image.to_rgba8())
 
 }
+fn wrapper<'a>(name: String) -> Pin<Box<dyn Future<Output = FontRef<'a>> + Send + 'a>> {
+    Box::pin(select_font_for_char(name))
+}
 
-pub fn render_text_with_different_fonts(image: &mut RgbaImage, text: String, position: (i32, i32), font_map: Option<FontFn>, font_scale: PxScale, color: Rgba<u8>) -> Result<()> {
-    let font_map = font_map.unwrap_or(select_font_for_char);
-    let (x, y) = position;
+pub async fn render_text_with_different_fonts<'a>(image: &mut RgbaImage, color: Rgba<u8>, x: i32, y: i32, font_scale: PxScale, text: String, font_map: Option<FontFn<'a>>) -> Result<()> {
+    let chars = text.as_str().split_word_bounds().map(String::from).collect::<Vec<String>>();
+    let font_map = font_map.unwrap_or(wrapper);
     let mut cursor_x = x as f32;
-
-    for c in text.chars() {
-        if is_emoji(c) {
-            get_emoji_png(c).and_then(|emoji_img| {
+    for c in chars {
+        if is_emoji(c.clone()).await {
+            get_emoji_png(c.as_str()).and_then(|emoji_img| {
                 overlay_image((cursor_x as u32, y as u32), image, &emoji_img, OverlayImageOption::new().resize(font_scale.x as u32, font_scale.y as u32))?;
                 cursor_x += font_scale.x;
                 Ok(())
@@ -228,19 +278,59 @@ pub fn render_text_with_different_fonts(image: &mut RgbaImage, text: String, pos
                 error!("Failed to render emoji: {}", e);
                 err!("Failed to render emoji")
             })?;
-            continue;
+        } else {
+            let font_to_use = font_map(c.clone()).await;
+
+            let scaled_font = font_to_use.as_scaled(font_scale);
+
+            draw_text_mut(image, color, cursor_x as i32, y, font_scale, &font_to_use, c.as_str());
+
+            // 根据glyph计算字符的宽度，用于更新cursor_x
+            for x in c.chars() {
+                let glyph = scaled_font.scaled_glyph(x);
+                let h_metrics = scaled_font.h_advance(glyph.id);
+                cursor_x += h_metrics;
+            }
         }
-        let font_to_use = font_map(c);
-
-        let scaled_font = font_to_use.as_scaled(font_scale);
-        let glyph = scaled_font.scaled_glyph(c);
-        draw_text_mut(image, color, cursor_x as i32, y, font_scale, &font_to_use, String::from(c).as_str());
-
-        // 根据glyph计算字符的宽度，用于更新cursor_x
-        let h_metrics = scaled_font.h_advance(glyph.id);
-        cursor_x += h_metrics;
     }
 
     Ok(())
 
+}
+
+pub fn draw_filled_rect_with_circle_corner(image: &mut RgbaImage, rect: Rect, color: Rgba<u8>, radius: u32) {
+    let width = rect.width();
+    let height = rect.height();
+    assert!(radius * 2 <= height, "Radius is too large for the rectangle");
+    if radius * 2 > width {
+        // 太小就不要圆角了嘛
+        draw_filled_rect_mut(image, rect, color);
+        return;
+    }
+    let (left, top) = (rect.left(), rect.top());
+    let radius_i32 = radius as i32;
+
+    // 绘制交叉矩形
+    draw_filled_rect_mut(image, Rect::at(left + radius_i32, top).of_size(width - radius * 2, height),  color);
+    draw_filled_rect_mut(image, Rect::at(left, top + radius_i32 ).of_size(width, height - radius * 2),  color);
+
+    // 绘制四个圆角
+    draw_filled_circle_mut(image, (left + radius_i32, top + radius as i32), radius_i32, color);
+    draw_filled_circle_mut(image, (left + width as i32 - radius_i32 - 1, top + radius as i32), radius_i32, color);
+    draw_filled_circle_mut(image, (left + radius_i32, top + height as i32 - radius_i32 - 1), radius_i32, color);
+    draw_filled_circle_mut(image, (left + width as i32 - radius_i32 - 1, top + height as i32 - radius_i32 - 1), radius_i32, color);
+}
+
+
+pub fn get_text_size(font: &FontRef, text: &str, scale: PxScale) -> (f32, f32) {
+    let mut content_text_width = 0.;
+    let mut content_text_height: f32 = 0.;
+    for x in text.chars() {
+        let scaled_font = font.as_scaled(scale);
+        let glyph = scaled_font.scaled_glyph(x);
+        let h_metrics = scaled_font.h_advance(glyph.id);
+        content_text_width += h_metrics;
+        content_text_height = content_text_height.max(scaled_font.height());
+    }
+    (content_text_width, content_text_height)
 }

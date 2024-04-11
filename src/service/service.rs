@@ -331,3 +331,20 @@ macro_rules! text {
         }
     };
 }
+
+#[macro_export]
+macro_rules! image {
+    ($x:expr) => {
+        crate::kritor::server::kritor_proto::common::Element {
+            r#type: i32::from(crate::kritor::server::kritor_proto::common::element::ElementType::Image),
+            data: Some(crate::kritor::server::kritor_proto::common::element::Data::Image(
+                crate::kritor::server::kritor_proto::common::ImageElement {
+                    file_md5: None,
+                    sub_type: None,
+                    r#type: Some(i32::from(crate::kritor::server::kritor_proto::common::image_element::ImageType::Common)),
+                    data: Some(crate::kritor::server::kritor_proto::common::image_element::Data::File($x)),
+                })
+            )
+        }
+    };
+}

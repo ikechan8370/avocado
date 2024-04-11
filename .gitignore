@@ -2,3 +2,4 @@
 .idea
 .cargo
 out.png
+resources/font/openmoji-72x72-color/*

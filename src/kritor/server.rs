@@ -118,7 +118,7 @@ impl ReverseService for ReverseListener {
     async fn reverse_stream(&self, request: Request<Streaming<common::Response>>) -> Result<Response<Self::ReverseStreamStream>, Status> {
         debug!("Received reverse stream");
         debug!("Request: {:?}", request.metadata());
-        let (tx, rx) = mpsc::channel(128);
+        let (tx, rx) = mpsc::channel(4096);
         let uid = request.metadata().get("kritor-self-uid").unwrap().to_str().unwrap().to_string();
         let version = request.metadata().get("kritor-self-version").map(|m| m.to_str().unwrap().to_string());
         let uin = request.metadata().get("kritor-self-uin").unwrap().to_str().unwrap().to_string().parse().unwrap_or(0);
@@ -172,7 +172,7 @@ impl ReverseService for ReverseListener {
             BOTS.write().await.remove(&uid);
         });
         tokio::spawn(async move {
-            sleep(Duration::from_secs(3)).await;
+            // sleep(Duration::from_secs(3)).await;
             Bot::init(bot.clone()).await;
         });
         let out_stream = ReceiverStream::new(rx);

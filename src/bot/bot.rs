@@ -17,6 +17,7 @@ use crate::bot::friend::{Friend, FriendAPITrait};
 use crate::bot::group::{Group, GroupAPITrait};
 use crate::kritor::server::kritor_proto::*;
 use crate::{err, kritor_err};
+use crate::bot::core::CoreAPITrait;
 use crate::kritor::server::kritor_proto::common::{Contact, Element};
 use crate::service::service::KritorContext;
 use crate::utils::kritor::same_contact_and_sender;
@@ -30,9 +31,10 @@ pub struct Bot {
     response_listener: Arc<Option<Sender<Result<common::Request, Status>>>>,
     uin: Option<u64>,
     uid: Option<String>,
-    nickname: Option<String>,
+    nickname: Arc<RwLock<Option<String>>>,
     groups: Arc<RwLock<Option<HashMap<u64, Group>>>>,
     friends: Arc<RwLock<Option<HashMap<u64, Friend>>>>,
+    client_version: Arc<RwLock<Option<String>>>,
     kritor_version: Option<String>,
     // 启动时间时间戳 单位秒
     up_time: u64,
@@ -58,11 +60,12 @@ impl Bot {
             request_queue: Arc::new(DashMap::new()),
             response_listener: tx_mutex,
             uid: Some(uid),
-            nickname: None,
+            nickname: Arc::new(RwLock::new(None)),
             groups: Arc::new(RwLock::new(Some(HashMap::new()))),
             uin: Some(uin),
             friends: Arc::new(RwLock::new(Some(HashMap::new()))),
 
+            client_version: Arc::new(RwLock::new(None)),
             kritor_version: version,
 
             up_time: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
@@ -78,6 +81,39 @@ impl Bot {
     }
 
     pub async fn init(self_arc: Arc<RwLock<Self>>) {
+        {
+            let mut self_guard = self_arc.read().await;
+            // let version = self_guard.get_version().await.expect("Failed to get version");
+            // self_guard.client_version.write().await.replace(version.clone().app_name);
+            // info!("Client version: {}", version.app_name);
+            self_guard.client_version.write().await.replace("Android QQ".to_string());
+            let current = self_guard.get_current_account().await.expect("Failed to get nickname");
+            self_guard.nickname.write().await.replace(current.account_name.clone());
+            info!("Welcome Nickname: {}", current.account_name);
+        }
+
+        let self_guard = self_arc.read().await;
+        info!("Start to get friends list");
+        let result = self_guard.get_friend_list(true).await;
+        drop(self_guard);
+        match result {
+            Ok(friends_response) => {
+                let info = friends_response.friends_info;
+                let friend_num = info.len();
+                info!("Friends count: {}", friend_num);
+                let friends = info.into_iter().map(|info| {
+                    let friend = Friend::new(info);
+                    (friend.inner.uin, friend)
+                }).collect::<HashMap<u64, Friend>>();
+                let mut self_guard = self_arc.write().await;
+                let mut final_friends = self_guard.friends.write().await;
+                final_friends.get_or_insert_with(HashMap::new).extend(friends);
+            }
+            Err(err) => {
+                error!("Failed to initialize friends: {:?}", err.error());
+            }
+        }
+
         let self_guard = self_arc.read().await;
         let max_concurrent = 20;
         info!("Start to get group list");
@@ -119,25 +155,7 @@ impl Bot {
             }
         };
 
-        let self_guard = self_arc.read().await;
-        info!("Start to get group list");
-        let result = self_guard.get_friend_list(true).await;
-        drop(self_guard);
-        match result {
-            Ok(friends_response) => {
-                let info = friends_response.friends_info;
-                let friends = info.into_iter().map(|info| {
-                    let friend = Friend::new(info);
-                    (friend.inner.uin, friend)
-                }).collect::<HashMap<u64, Friend>>();
-                let mut self_guard = self_arc.write().await;
-                let mut final_friends = self_guard.friends.write().await;
-                final_friends.get_or_insert_with(HashMap::new).extend(friends);
-            }
-            Err(err) => {
-                error!("Failed to initialize friends: {:?}", err.error());
-            }
-        }
+
         info!("Bot initialized");
     }
     pub fn get_message_sender(&self) -> &broadcast::Sender<common::PushMessageBody> {
@@ -166,6 +184,25 @@ impl Bot {
 
     pub fn get_kritor_version(&self) -> Option<String> {
         self.kritor_version.clone()
+    }
+
+    pub async fn get_client_version(&self) -> Option<String> {
+        let arc = self.client_version.clone();
+        let lock = arc.read().await;
+        lock.clone()
+    }
+
+    pub fn get_uin(&self) -> Option<u64> {
+        self.uin
+    }
+
+    pub fn get_uid(&self) -> Option<String> {
+        self.uid.clone()
+    }
+    pub async fn get_nickname(&self) -> Option<String> {
+        let arc = self.nickname.clone();
+        let lock = arc.read().await;
+        lock.clone()
     }
 
     pub fn get_uptime(&self) -> u64 {
@@ -245,7 +282,6 @@ impl Bot {
         match resp_rx.await {
             Ok(response) => {
                 debug!("Response received, cmd: {}, seq: {}", response.cmd, response.seq);
-                self.plus_one_sent();
                 Ok(response)
             },
             Err(e) => kritor_err!(format!("Failed to receive response: {}", e)),
@@ -270,6 +306,7 @@ impl Bot {
         }).await.expect("send error");
         let buf: Bytes = response.buf.into();
         let response = SendMessageResponse::decode(buf).unwrap();
+        self.plus_one_sent();
         Ok(response)
     }
 }
