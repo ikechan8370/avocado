@@ -182,15 +182,11 @@ pub fn overlay_image_with_pure_color(position: (u32, u32), image: &mut RgbaImage
 type FontFn<'font> = fn(String) -> Pin<Box<dyn Future<Output = FontRef<'font>> + Send + 'font>>;
 
 lazy_static!(
-    pub static ref DEFAULT_EMOJI_FONT: FontRef<'static> = FontRef::try_from_slice(include_bytes!("../../resources/font/NotoColorEmoji.ttf")).unwrap();
+    // pub static ref DEFAULT_EMOJI_FONT: FontRef<'static> = FontRef::try_from_slice(include_bytes!("../../resources/font/NotoColorEmoji.ttf")).unwrap();
     pub static ref DEFAULT_NORMAL_FONT: FontRef<'static> = FontRef::try_from_slice(include_bytes!("../../resources/font/SmileySans-Oblique.ttf")).unwrap();
 );
 pub async fn select_font_for_char<'font>(c: String) -> FontRef<'font> {
-    if is_emoji(c).await {
-        DEFAULT_EMOJI_FONT.clone()
-    } else {
-        DEFAULT_NORMAL_FONT.clone()
-    }
+    DEFAULT_NORMAL_FONT.clone()
 }
 
 pub static EMOJI_MAP: Lazy<Arc<RwLock<DashMap<String, bool>>>> = Lazy::new(|| {
