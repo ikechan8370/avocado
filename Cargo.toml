@@ -27,10 +27,15 @@ dashmap = "5.5.3"
 regex = "1.10.4"
 imageproc = "0.24.0"
 ab_glyph = "0.2.24"
+reqwest = "0.12.3"
+rusttype = "0.9.3"
+lazy_static = "1.4.0"
+emojis = "0.6.1"
 avocado_common = { path = "./avocado_common" }
 avocado_macro = { path = "./avocado_macro" }
 base64 = "0.21.7"
 image = "0.25.1"
+zip = "0.6.6"
 
 [build-dependencies]
 tonic-build = "0.11"
