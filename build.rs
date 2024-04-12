@@ -37,26 +37,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 
     // 加载插件
-    let out_dir = "src/service/plugins";
-    let dest_path = Path::new(&out_dir).join("mod.rs");
-    let mut f = fs::File::create(&dest_path).unwrap();
+    let out_dirs = vec!["src/service/plugins", "src/service/plugins/default"];
+    for out_dir in out_dirs {
+        let dest_path = Path::new(&out_dir).join("mod.rs");
+        let mut f = fs::File::create(&dest_path).unwrap();
 
-    let paths = fs::read_dir(out_dir).unwrap();
+        let paths = fs::read_dir(out_dir).unwrap();
 
-    for path in paths {
-        let path = path.unwrap().path();
-        if path.is_dir() {
-            if let Some(os_str) = path.file_name() {
-                if let Some(dir_name) = os_str.to_str() {
-                    writeln!(f, "mod {};", dir_name).unwrap();
+        for path in paths {
+            let path = path.unwrap().path();
+            if path.is_dir() {
+                if let Some(os_str) = path.file_name() {
+                    if let Some(dir_name) = os_str.to_str() {
+                        writeln!(f, "mod {};", dir_name).unwrap();
+                    }
                 }
-            }
-        } else if let Some(extension) = path.extension() {
-            if extension == "rs" {
-                if let Some(os_str) = path.file_stem() {
-                    if let Some(file_name) = os_str.to_str() {
-                        if file_name != "mod" && file_name != "main" {
-                            writeln!(f, "mod {};", file_name).unwrap();
+            } else if let Some(extension) = path.extension() {
+                if extension == "rs" {
+                    if let Some(os_str) = path.file_stem() {
+                        if let Some(file_name) = os_str.to_str() {
+                            if file_name != "mod" && file_name != "main" {
+                                writeln!(f, "mod {};", file_name).unwrap();
+                            }
                         }
                     }
                 }
