@@ -82,7 +82,7 @@ impl Bot {
 
     pub async fn init(self_arc: Arc<RwLock<Self>>) {
         {
-            let mut self_guard = self_arc.read().await;
+            let self_guard = self_arc.read().await;
             // let version = self_guard.get_version().await.expect("Failed to get version");
             // self_guard.client_version.write().await.replace(version.clone().app_name);
             // info!("Client version: {}", version.app_name);
@@ -105,7 +105,7 @@ impl Bot {
                     let friend = Friend::new(info);
                     (friend.inner.uin, friend)
                 }).collect::<HashMap<u64, Friend>>();
-                let mut self_guard = self_arc.write().await;
+                let self_guard = self_arc.write().await;
                 let mut final_friends = self_guard.friends.write().await;
                 final_friends.get_or_insert_with(HashMap::new).extend(friends);
             }
@@ -138,7 +138,7 @@ impl Bot {
                 let results: HashMap<u64, Vec<GroupMemberInfo>> = tasks.collect().await;
 
                 debug!("prepare to update bot");
-                let mut self_guard = self_arc.write().await;
+                let self_guard = self_arc.write().await;
                 let mut final_groups = self_guard.groups.write().await;
                 for group_info in groups.groups_info {
                     let group_id = group_info.group_id;

@@ -2,14 +2,18 @@
 mod tests {
     use std::cmp::max;
     use std::path::Path;
+
     use ab_glyph::{Font, FontRef, PxScale, ScaleFont};
-    use image::{GenericImageView, ImageFormat, Rgb, Rgba, RgbaImage, RgbImage};
     use image::imageops::FilterType;
-    use imageproc::drawing::{draw_cross_mut, draw_filled_rect_mut, draw_hollow_rect_mut, draw_line_segment, draw_line_segment_mut, draw_text_mut, text_size};
+    use image::Rgba;
+    use image::RgbaImage;
+    use imageproc::drawing::{draw_filled_rect_mut, draw_line_segment_mut, draw_text_mut, text_size};
     use imageproc::rect::Rect;
     use sysinfo::{Disks, System};
     use unicode_segmentation::UnicodeSegmentation;
-    use crate::utils::image::{DEFAULT_NORMAL_FONT, draw_filled_rect_with_circle_corner, is_emoji, overlay_image, overlay_image_from_url, overlay_image_with_pure_color, OverlayImageOption, render_text_with_different_fonts};
+
+    use crate::utils::image::{DEFAULT_NORMAL_FONT, draw_filled_rect_with_circle_corner, is_emoji, overlay_image, overlay_image_from_url, OverlayImageOption, render_text_with_different_fonts};
+
     #[tokio::test]
     async fn emoji_works() {
         assert_eq!(true, emojis::get("❤️‍🔥").is_some());

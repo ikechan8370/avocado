@@ -1,29 +1,26 @@
-use sysinfo::{CpuRefreshKind, Disks, Networks, Pid, RefreshKind, System};
 use std::cmp::max;
 use std::io::Cursor;
 use std::time::SystemTime;
 use std::vec;
-use ab_glyph::{FontRef, PxScale};
 
+use ab_glyph::{FontRef, PxScale};
 use async_trait::async_trait;
-use base64::Engine;
-use base64::engine::general_purpose;
 use image::{Rgba, RgbaImage};
 use image::imageops::FilterType;
 use imageproc::drawing::{draw_filled_rect_mut, draw_line_segment_mut, draw_text_mut, text_size};
 use imageproc::rect::Rect;
-use log::info;
+use sysinfo::{CpuRefreshKind, Disks, Networks, Pid, RefreshKind, System};
+
 use avocado_common::Event;
 use avocado_macro::service;
-
-use crate::kritor::server::kritor_proto::common::{Element, image_element, ImageElement, Scene};
-use crate::kritor::server::kritor_proto::common::image_element::ImageType;
-use crate::service::service::{KritorContext, Service};
-use crate::{image, text};
-use crate::utils::time::format_duration;
 use crate::service::service::Elements;
-use crate::utils::common::bytes_to_readable_string;
+use crate::{image, text};
+use crate::kritor::server::kritor_proto::common::Scene;
+use crate::service::service::{KritorContext, Service};
+use crate::utils::common::{bytes_to_readable_string};
+use crate::utils::common::memory::get_current_memory_usage;
 use crate::utils::image::{DEFAULT_NORMAL_FONT, draw_filled_rect_with_circle_corner, get_text_size, overlay_image, overlay_image_from_url, OverlayImageOption, render_text_with_different_fonts};
+use crate::utils::time::format_duration;
 
 #[derive(Debug, Clone, Default)]
 #[service(
@@ -238,7 +235,7 @@ async fn draw(context: &KritorContext) -> Vec<u8> {
     let cpu_name = cpu.brand();
     let text = "CPU: ";
     draw_bold_weight(&mut image, current_y, padding_left_right, black, scale, &font, text);
-    draw_bar(&mut image, current_y, format!("{:.1}%", cpu_usage).as_str(), cpu_usage as f64 / 100f64, &font, font_size, bar_height, bar_bg_color, bar_radius, chart_start_x, bar_width, content_distant, content_height, content_font_size as f32, content_scale, white);
+    draw_bar(&mut image, current_y, format!("{:.1}%", cpu_usage).as_str(), cpu_usage as f64 / 100f64, &font, font_size, bar_height, bar_bg_color, bar_radius, chart_start_x, bar_width, content_distant, content_height, content_scale, white);
     current_y += font_size + 20;
 
     // Memory
@@ -247,7 +244,7 @@ async fn draw(context: &KritorContext) -> Vec<u8> {
     let rate = (total_memory - available_memory) as f64 / total_memory as f64;
     let text = "内存: ";
     draw_bold_weight(&mut image, current_y, padding_left_right, black, scale, &font, text);
-    draw_bar(&mut image, current_y, format!("{:.1}%", rate * 100f64).as_str(), rate, &font, font_size, bar_height, bar_bg_color, bar_radius, chart_start_x, bar_width, content_distant, content_height, content_font_size as f32, content_scale, white);
+    draw_bar(&mut image, current_y, format!("{:.1}%", rate * 100f64).as_str(), rate, &font, font_size, bar_height, bar_bg_color, bar_radius, chart_start_x, bar_width, content_distant, content_height, content_scale, white);
     current_y += font_size + 20;
 
     // swap
@@ -256,7 +253,7 @@ async fn draw(context: &KritorContext) -> Vec<u8> {
     let swap_rate = used_swap as f64 / total_swap as f64;
     let text = "交换: ";
     draw_bold_weight(&mut image, current_y, padding_left_right, black, scale, &font, text);
-    draw_bar(&mut image, current_y, format!("{:.1}%", rate * 100f64).as_str(), swap_rate, &font, font_size, bar_height, bar_bg_color, bar_radius, chart_start_x, bar_width, content_distant, content_height, content_font_size as f32, content_scale, white);
+    draw_bar(&mut image, current_y, format!("{:.1}%", swap_rate * 100f64).as_str(), swap_rate, &font, font_size, bar_height, bar_bg_color, bar_radius, chart_start_x, bar_width, content_distant, content_height, content_scale, white);
     current_y += font_size + 20;
 
     // Disk
@@ -270,11 +267,11 @@ async fn draw(context: &KritorContext) -> Vec<u8> {
     let disk_rate = (total - available) as f64 / total as f64;
     let text = "硬盘: ";
     draw_bold_weight(&mut image, current_y, padding_left_right, black, scale, &font, text);
-    draw_bar(&mut image, current_y, format!("{:.1}%", disk_rate * 100f64).as_str(), disk_rate, &font, font_size, bar_height, bar_bg_color, bar_radius, chart_start_x, bar_width, content_distant, content_height, content_font_size as f32, content_scale, white);
+    draw_bar(&mut image, current_y, format!("{:.1}%", disk_rate * 100f64).as_str(), disk_rate, &font, font_size, bar_height, bar_bg_color, bar_radius, chart_start_x, bar_width, content_distant, content_height, content_scale, white);
     current_y += font_size + 20;
 
     let networks = Networks::new_with_refreshed_list();
-    let (interface_name, data) = networks.iter().max_by(|a, b| a.1.total_received().partial_cmp(&b.1.total_received()).unwrap_or(std::cmp::Ordering::Equal)).unwrap();
+    let (_interface_name, data) = networks.iter().max_by(|a, b| a.1.total_received().partial_cmp(&b.1.total_received()).unwrap_or(std::cmp::Ordering::Equal)).unwrap();
     let up = data.total_transmitted();
     let down = data.total_received();
     let text = "网络: ";
@@ -351,8 +348,9 @@ async fn draw(context: &KritorContext) -> Vec<u8> {
     current_y += brand_font_size + 20;
 
     let self_id = std::process::id();
+    let current_memory_usage = get_current_memory_usage(Some(self_id)).unwrap_or(0);
     if let Some(self_process) = sys.process(Pid::from_u32(self_id)) {
-        let text = format!("🥑  本进程占用 —— CPU {:.1}% 内存 {}", self_process.cpu_usage(), bytes_to_readable_string(self_process.memory()));
+        let text = format!("🥑  本进程占用 —— CPU {:.1}% 内存 {}", self_process.cpu_usage(), bytes_to_readable_string(current_memory_usage as u64));
         render_text_with_different_fonts(&mut image, color, padding_left_right as i32, current_y, scale, text.to_string(), None).await.unwrap();
         current_y += brand_font_size + 20;
     };
@@ -383,7 +381,7 @@ async fn draw(context: &KritorContext) -> Vec<u8> {
 }
 
 
-fn draw_bar(image: &mut RgbaImage, current_y: i32, content_text: &str, rate: f64, font: &FontRef, font_size: i32, bar_height: i32, bar_bg_color: Rgba<u8>, bar_radius: u32, chart_start_x: u32, bar_width: u32, content_distant: i32, content_height: u32, content_font_size: f32, content_scale: PxScale, text_color: Rgba<u8>) {
+fn draw_bar(image: &mut RgbaImage, current_y: i32, content_text: &str, rate: f64, font: &FontRef, font_size: i32, bar_height: i32, bar_bg_color: Rgba<u8>, bar_radius: u32, chart_start_x: u32, bar_width: u32, content_distant: i32, content_height: u32, content_scale: PxScale, text_color: Rgba<u8>) {
     draw_filled_rect_with_circle_corner(image, Rect::at(chart_start_x as i32, current_y + (font_size - bar_height) / 2).of_size(bar_width, bar_height as u32), bar_bg_color, bar_radius);
     let content_length = ((bar_width as i32 - 2 * content_distant) as f64 * rate) as u32;
     let content_left = chart_start_x as i32 + content_distant;
@@ -393,11 +391,18 @@ fn draw_bar(image: &mut RgbaImage, current_y: i32, content_text: &str, rate: f64
         r if r < 0.8 => Rgba([70u8, 173u8, 255u8, 255u8]),
         _ => Rgba([199, 0, 57, 255u8]),
     };
-    draw_filled_rect_with_circle_corner(image, Rect::at(content_left, content_top).of_size(content_length, content_height), content_color, bar_radius - (content_distant / 2) as u32);
-    let (content_text_width, content_text_height) = get_text_size(font, content_text, content_scale);
-    let content_text_top = content_top + ((content_height as f32 - content_text_height) / 2.) as i32;
-    let content_tet_left = content_left + ((content_length as f32 - content_text_width) / 2.) as i32;
-    draw_text_mut(image, text_color, content_tet_left, content_text_top, content_scale, &font, content_text);
+    if rate > 0f64 {
+        draw_filled_rect_with_circle_corner(image, Rect::at(content_left, content_top).of_size(content_length, content_height), content_color, bar_radius - (content_distant / 2) as u32);
+        let (content_text_width, content_text_height) = get_text_size(font, content_text, content_scale);
+        let content_text_top = content_top + ((content_height as f32 - content_text_height) / 2.) as i32;
+        let content_tet_left = content_left + ((content_length as f32 - content_text_width) / 2.) as i32;
+        draw_text_mut(image, text_color, content_tet_left, content_text_top, content_scale, &font, content_text);
+    } else {
+        let (content_text_width, content_text_height) = get_text_size(font, content_text, content_scale);
+        let content_text_top = content_top + ((content_height as f32 - content_text_height) / 2.) as i32;
+        let content_tet_left = content_left + ((bar_width as f32 - content_text_width) / 2.) as i32;
+        draw_text_mut(image, text_color, content_tet_left, content_text_top, content_scale, &font, content_text);
+    }
 }
 
 fn draw_bold_weight(image: &mut RgbaImage, current_y: i32, padding_left_right: u32, black: Rgba<u8>, scale: PxScale, font: &FontRef, text: &str) {

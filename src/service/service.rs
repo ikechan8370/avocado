@@ -202,7 +202,7 @@ impl KritorContext {
 
     pub async fn start_transaction(&self, name: String, until: Option<u64>) -> Result<()> {
         // 通知该Bot接下来的until秒内 收到消息不再进入任何插件，而是进入该service，且保持context不变
-        let mut context = self.clone();
+        let context = self.clone();
         let mut trans_name = context.current_transaction_name.write().await;
         *trans_name = Some(name);
         let bot = self.bot.clone();
@@ -235,14 +235,14 @@ pub trait Service: Matchable {
 
     async fn process(&self, context: KritorContext);
 
-    async fn transaction(&self, context: KritorContext) {
+    async fn transaction(&self, _context: KritorContext) {
         warn!("default transaction");
     }
 }
 
 #[async_trait]
 pub trait Matchable {
-    fn matches(&self, context: KritorContext) -> bool {
+    fn matches(&self, _context: KritorContext) -> bool {
         false
     }
 

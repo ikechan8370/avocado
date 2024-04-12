@@ -40,6 +40,13 @@ unicode-segmentation = "1.7.1"
 sysinfo = "0.30.10"
 boa_engine = { version = "0.18.0" }
 boa_runtime = { version = "0.18.0" }
+winapi = { version = "0.3.9", optional = true, features = ["psapi", "processthreadsapi", "winnt"] }
+sysconf = { version = "0.3.4", optional = true }
 
 [build-dependencies]
 tonic-build = "0.11"
+
+[features]
+default = []
+linux = ["sysconf"]
+windows = ["winapi"]

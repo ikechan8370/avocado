@@ -1,30 +1,48 @@
 
 class AvocadoPlugin {
-    async matches (e) {
-        return e.msg.test(/^#测试/);
+    constructor(e) {
+        this.e = e
+    }
+    async check () {
+        return check(/^#测试/, this.e.msg);
     }
 
-    async process (e) {
-        console.log(e.msg)
-        return test(e.msg)
+    async process () {
+        console.log(this.e.msg)
+        // return this.e.msg
+        return avocado(this.e.msg)
     }
 }
 
-let plugin = new AvocadoPlugin();
 
-function wrapper(p, e) {
-    return p.matches(e).then((result) => {
-        if (result) {
-            p.process(e).then((result) => {
-                console.log(result)
-                return result
-            })
-        }
-    })
+
+
+async function wrapper(p) {
+    console.log("into wrapper")
+    let match = await p.check();
+    console.log({match})
+    if (match) {
+        let res = await p.process();
+        console.log(res)
+        return res
+    }
+    return "not match";
 }
 
 let emulated = {
     msg: '#测试测试'
 };
+let plugin = new AvocadoPlugin(emulated);
 console.log('emulated:', emulated)
-wrapper(plugin, emulated)
+
+new Promise((resolve, reject) => {
+    wrapper(plugin).then(res => {
+        resolve(res)
+    }).catch(err => {
+        console.error(err)
+        reject(err)
+    })
+})
+
+
+

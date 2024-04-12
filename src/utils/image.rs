@@ -1,17 +1,16 @@
-use std::collections::HashMap;
 use std::fs::File;
 use std::future::Future;
 use std::io::{BufReader, Cursor, Read};
 use std::pin::Pin;
 use std::sync::Arc;
-use ab_glyph::{Font, FontRef, PxScale, PxScaleFont, ScaleFont};
+use ab_glyph::{Font, FontRef, PxScale, ScaleFont};
 use dashmap::DashMap;
-use image::{DynamicImage, Rgba, RgbaImage};
+use image::{Rgba, RgbaImage};
 use image::imageops::FilterType;
-use imageproc::drawing::{draw_filled_circle_mut, draw_filled_rect_mut, draw_text_mut, text_size};
+use imageproc::drawing::{draw_filled_circle_mut, draw_filled_rect_mut, draw_text_mut};
 use imageproc::rect::Rect;
 use lazy_static::lazy_static;
-use log::{debug, error, info};
+use log::{debug, error};
 use once_cell::sync::Lazy;
 use tokio::sync::RwLock;
 use unicode_segmentation::UnicodeSegmentation;
@@ -185,7 +184,7 @@ lazy_static!(
     // pub static ref DEFAULT_EMOJI_FONT: FontRef<'static> = FontRef::try_from_slice(include_bytes!("../../resources/font/NotoColorEmoji.ttf")).unwrap();
     pub static ref DEFAULT_NORMAL_FONT: FontRef<'static> = FontRef::try_from_slice(include_bytes!("../../resources/font/SmileySans-Oblique.ttf")).unwrap();
 );
-pub async fn select_font_for_char<'font>(c: String) -> FontRef<'font> {
+pub async fn select_font_for_char<'font>(_c: String) -> FontRef<'font> {
     DEFAULT_NORMAL_FONT.clone()
 }
 
@@ -217,7 +216,7 @@ pub async fn is_emoji(c: String) -> bool {
         found.is_ok()
     };
     if is {
-        let mut map = EMOJI_MAP.write().await;
+        let map = EMOJI_MAP.write().await;
         map.insert(c.clone(), is);
     }
     is
