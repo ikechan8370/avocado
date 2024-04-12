@@ -4,6 +4,7 @@ class AvocadoPlugin {
         this.e = e
     }
     async check () {
+        logger.info(this.e.msg)
         return check(/^#测试/, this.e.msg);
     }
 

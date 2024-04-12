@@ -5,11 +5,41 @@ mod tests {
     use boa_engine::builtins::promise::PromiseState;
     use boa_engine::job::NativeJob;
     use boa_engine::object::builtins::{JsPromise, JsRegExp};
+    use boa_engine::object::ObjectInitializer;
     use boa_engine::property::Attribute;
     use crate::utils::time::format_duration;
     use boa_runtime::Console;
+    use log::{debug, error, info, warn};
 
+    struct Logger {
+        pub debug: NativeFunction,
+        pub info: NativeFunction,
+        pub warn: NativeFunction,
+        pub error: NativeFunction,
+    }
 
+    impl Logger {
+        pub fn new() -> Self {
+            Self {
+                debug: NativeFunction::from_copy_closure(|_this, args, _ctx| {
+                    debug!("{:?}", args);
+                    Ok(JsValue::Undefined)
+                }),
+                info: NativeFunction::from_copy_closure(|_this, args, _ctx| {
+                    info!("{:?}", args);
+                    Ok(JsValue::Undefined)
+                }),
+                warn: NativeFunction::from_copy_closure(|_this, args, _ctx| {
+                    warn!("{:?}", args);
+                    Ok(JsValue::Undefined)
+                }),
+                error: NativeFunction::from_copy_closure(|_this, args, _ctx| {
+                    error!("{:?}", args);
+                    Ok(JsValue::Undefined)
+                }),
+            }
+        }
+    }
 
     #[tokio::test]
     async fn test_boa_call_and_bind() {
@@ -46,6 +76,17 @@ mod tests {
                 }),
             )
             .unwrap();
+
+        let logger = Logger::new();
+        let object = ObjectInitializer::new(&mut context)
+            .function(logger.debug, js_string!("debug"), 1)
+            .function(logger.info, js_string!("info"), 1)
+            .function(logger.warn, js_string!("warn"), 1)
+            .function(logger.error, js_string!("error"), 1)
+            .build();
+
+        context.register_global_property(js_string!("logger"), object, Attribute::all()).unwrap();
+
         context
             .register_global_callable(
                 js_string!("avocado"),
