@@ -180,7 +180,7 @@ async fn draw(context: &KritorContext) -> Vec<u8> {
     render_text_with_different_fonts(&mut image, black, text_left_x, current_y, scale, text, None).await.unwrap();
     current_y += font_size + line_height;
 
-    let text = format!("📧 发送：{} 📬接收：{}", receive, sent);
+    let text = format!("📧 发送：{} 📬接收：{}", sent, receive);
     render_text_with_different_fonts(&mut image, black, text_left_x, current_y, scale, text, None).await.unwrap();
     current_y += font_size + line_height;
 
