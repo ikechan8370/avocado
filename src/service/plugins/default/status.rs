@@ -104,6 +104,10 @@ async fn draw(context: &KritorContext) -> Vec<u8> {
     let client_version = bot.get_client_version().await.unwrap_or_default();
     drop(bot);
 
+    // 本进程占用
+    let self_id = std::process::id();
+    let current_memory_usage = get_current_memory_usage(Some(self_id)).unwrap_or(0);
+
     let width = 1080;
     let height = 2240;
     let mut image = RgbaImage::new(width, height);
@@ -275,8 +279,8 @@ async fn draw(context: &KritorContext) -> Vec<u8> {
     let up = data.total_transmitted();
     let down = data.total_received();
     let text = "网络: ";
-    let half_width = (width - padding_left_right * 2) / 2;
-    let half_content_width = half_width - estimated_title_width;
+    let net_width = (width - padding_left_right * 2) * 3 / 5;
+    let net_content_width = net_width - estimated_title_width;
     draw_bold_weight(&mut image, current_y, padding_left_right, black, scale, &font, text);
 
     // draw_bar(&mut image, current_y, "98%", 0.98, &font, font_size, bar_height, bar_bg_color, bar_radius, chart_start_x, bar_width, blue, content_distant, content_height, content_font_size as f32, content_scale, white);
@@ -290,10 +294,10 @@ async fn draw(context: &KritorContext) -> Vec<u8> {
     let net_start_x = padding_left_right + estimated_title_width;
     let network_text_top = current_y  + (estimated_title_height - network_font_size) / 2;
     render_text_with_different_fonts(&mut image, black, net_start_x as i32, network_text_top, network_scale, up_text.to_string(), None).await.unwrap();
-    render_text_with_different_fonts(&mut image, black, net_start_x as i32 + (half_content_width / 2) as i32, network_text_top, network_scale, down_text.to_string(), None).await.unwrap();
+    render_text_with_different_fonts(&mut image, black, net_start_x as i32 + (net_content_width / 2) as i32, network_text_top, network_scale, down_text.to_string(), None).await.unwrap();
 
     let text = "在线: ";
-    let uptime_left = padding_left_right + half_width;
+    let uptime_left = padding_left_right + net_width;
     let uptime_content_left = uptime_left + estimated_title_width;
     draw_bold_weight(&mut image, current_y, uptime_left, black, scale, &font, text);
     let uptime_font_size = 48;
@@ -303,8 +307,10 @@ async fn draw(context: &KritorContext) -> Vec<u8> {
     };
     let uptime = System::uptime();
     let uptime_text = format_duration(uptime).unwrap_or("刚刚启动".to_string());
+    // let uptime_content_width = width - padding_left_right * 2 - uptime_content_left;
     let (content_text_width, content_text_height) = get_text_size(&font, uptime_text.as_str(), uptime_scale);
-    let uptime_text_left = uptime_content_left + (half_content_width - content_text_width as u32) / 2;
+    // 贴着好了
+    let uptime_text_left = uptime_content_left + 5;
     let uptime_text_top =  current_y  + (estimated_title_height - content_text_height as i32) / 2;
     render_text_with_different_fonts(&mut image, black, uptime_text_left as i32, uptime_text_top, uptime_scale, uptime_text.to_string(), None).await.unwrap();
 
@@ -347,14 +353,11 @@ async fn draw(context: &KritorContext) -> Vec<u8> {
     render_text_with_different_fonts(&mut image, color, padding_left_right as i32, current_y, scale, text.to_string(), None).await.unwrap();
     current_y += brand_font_size + 20;
 
-    let self_id = std::process::id();
-    let current_memory_usage = get_current_memory_usage(Some(self_id)).unwrap_or(0);
     if let Some(self_process) = sys.process(Pid::from_u32(self_id)) {
         let text = format!("🥑  本进程占用 —— CPU {:.1}% 内存 {}", self_process.cpu_usage(), bytes_to_readable_string(current_memory_usage as u64));
         render_text_with_different_fonts(&mut image, color, padding_left_right as i32, current_y, scale, text.to_string(), None).await.unwrap();
         current_y += brand_font_size + 20;
     };
-
 
     current_y += 20;
     let _ = draw_line_segment_mut(&mut image, (padding_left_right as f32, current_y as f32), ((width - padding_left_right) as f32, current_y as f32), grey);
