@@ -45,6 +45,7 @@ boa_runtime = { version = "0.18.0" }
 boa_gc = { version = "0.18.0" }
 winapi = { version = "0.3.9", optional = true, features = ["psapi", "processthreadsapi", "winnt"] }
 sysconf = { version = "0.3.4", optional = true }
+chrono = "0.4.37"
 
 [build-dependencies]
 tonic-build = "0.11"

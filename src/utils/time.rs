@@ -1,4 +1,5 @@
 use crate::model::error::Result;
+use chrono::{Local, Datelike, Timelike, Weekday};
 
 pub fn format_duration(duration: u64) -> Result<String> {
 
@@ -27,3 +28,29 @@ pub fn format_duration(duration: u64) -> Result<String> {
     Ok(duration_str)
 }
 
+pub fn now_format() -> String {
+    let local_time = Local::now();
+
+    let year = local_time.year();
+    let month = local_time.month();
+    let day = local_time.day();
+    let hour = local_time.hour();
+    let minute = local_time.minute();
+    let weekday = local_time.weekday();
+
+    // 星期几的中文表达
+    let weekday_str = match weekday {
+        Weekday::Mon => "星期一",
+        Weekday::Tue => "星期二",
+        Weekday::Wed => "星期三",
+        Weekday::Thu => "星期四",
+        Weekday::Fri => "星期五",
+        Weekday::Sat => "星期六",
+        Weekday::Sun => "星期日",
+    };
+
+    format!(
+        "{}年{}月{}日 {}:{} {}",
+        year, month, day, hour, minute, weekday_str
+    )
+}

@@ -7,12 +7,14 @@ mod tests {
     use image::imageops::FilterType;
     use image::Rgba;
     use image::RgbaImage;
+    use imageproc::definitions::HasBlack;
     use imageproc::drawing::{draw_filled_rect_mut, draw_line_segment_mut, draw_text_mut, text_size};
     use imageproc::rect::Rect;
     use sysinfo::{Disks, System};
     use unicode_segmentation::UnicodeSegmentation;
 
     use crate::utils::image::{DEFAULT_NORMAL_FONT, draw_filled_rect_with_circle_corner, is_emoji, overlay_image, overlay_image_from_url, OverlayImageOption, render_text_with_different_fonts};
+    use crate::utils::time::now_format;
 
     #[tokio::test]
     async fn emoji_works() {
@@ -61,16 +63,32 @@ mod tests {
         let text = "Avocado Bot";
         let (w, h) = text_size(scale, &font, text);
 
-        let x = (width - w - height as u32) / 2;
+        let x = padding_left_right;
         let y = 30;
         let theme_color = Rgba([84u8, 128u8, 2u8, 255u8]);
-        overlay_image((x, y), &mut image, &overlay_img, OverlayImageOption::new()).unwrap();
+        overlay_image((padding_left_right, y), &mut image, &overlay_img, OverlayImageOption::new()).unwrap();
 
         // draw_text_mut(&mut image, theme_color, ((width - w - height as u32) / 2 + height as u32) as i32, 30, scale, &font, text);
-        draw_bold_weight(&mut image, 30, (width - w - height as u32) / 2 + height as u32, theme_color, scale, &font, text);
+        draw_bold_weight(&mut image, 30, x + height as u32, theme_color, scale, &font, text);
+
+        let date_scale = PxScale {
+            x: height * 0.5,
+            y: height * 0.5,
+        };
+        let date = now_format();
+        let (date_w, date_h) = text_size(date_scale, &font, date.as_str());
+
+        draw_text_mut(&mut image, grey, (width - padding_left_right - date_w) as i32, y as i32 + (0.45 * height) as i32, date_scale, &font, &date);
+
+        let padding = 30;
+
+        let _ = draw_line_segment_mut(&mut image, (padding_left_right as f32, (h + y + padding) as f32), ((width as i32 - 50) as f32, (h + y + padding) as f32), theme_color);
+
+
+
         // icon
         let x = padding_left_right;
-        let y = 30 + h + 50;
+        let y = 30 + h + padding + 20;
         let crop_height = width / 3;
         overlay_image_from_url((x, y), &mut image, "https://q1.qlogo.cn/g?b=qq&nk=450960006&s=0".to_string(),
                                OverlayImageOption::new()
