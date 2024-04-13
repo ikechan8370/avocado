@@ -4,7 +4,7 @@ use prost::Message;
 use crate::bot::bot::Bot;
 use crate::kritor::server::kritor_proto::*;
 use crate::model::error::Result;
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Friend {
     pub inner: FriendInfo,
 }
@@ -47,7 +47,7 @@ impl FriendAPITrait for Bot {
             buf: request.encode_to_vec(),
             no_response: false,
         }).await.expect("send error");
-        let buf: Bytes = response.buf.into();
+        let buf: Bytes = response.buf.clone().into();
         let response = GetFriendListResponse::decode(buf).unwrap();
         Ok(response)
     }
@@ -63,7 +63,7 @@ impl FriendAPITrait for Bot {
             buf: request.encode_to_vec(),
             no_response: false,
         }).await.expect("send error");
-        let buf: Bytes = response.buf.into();
+        let buf: Bytes = response.buf.clone().into();
         let response = GetFriendProfileCardResponse::decode(buf).unwrap();
         Ok(response)
     }
@@ -79,7 +79,7 @@ impl FriendAPITrait for Bot {
             buf: request.encode_to_vec(),
             no_response: false,
         }).await.expect("send error");
-        let buf: Bytes = response.buf.into();
+        let buf: Bytes = response.buf.clone().into();
         let response = GetStrangerProfileCardResponse::decode(buf).unwrap();
         Ok(response)
     }
@@ -100,7 +100,7 @@ impl FriendAPITrait for Bot {
             buf: request.encode_to_vec(),
             no_response: false,
         }).await.expect("send error");
-        let buf: Bytes = response.buf.into();
+        let buf: Bytes = response.buf.clone().into();
         let response = SetProfileCardResponse::decode(buf).unwrap();
         Ok(response)
     }
@@ -115,7 +115,7 @@ impl FriendAPITrait for Bot {
             buf: request.encode_to_vec(),
             no_response: false,
         }).await.expect("send error");
-        let buf: Bytes = response.buf.into();
+        let buf: Bytes = response.buf.clone().into();
         let response = IsBlackListUserResponse::decode(buf).unwrap();
         Ok(response)
     }
@@ -131,7 +131,7 @@ impl FriendAPITrait for Bot {
             buf: request.encode_to_vec(),
             no_response: false,
         }).await.expect("send error");
-        let buf: Bytes = response.buf.into();
+        let buf: Bytes = response.buf.clone().into();
         let response = VoteUserResponse::decode(buf).unwrap();
         Ok(response)
     }
@@ -146,7 +146,7 @@ impl FriendAPITrait for Bot {
             buf: request.encode_to_vec(),
             no_response: false,
         }).await.expect("send error");
-        let buf: Bytes = response.buf.into();
+        let buf: Bytes = response.buf.clone().into();
         let response = GetUidByUinResponse::decode(buf).unwrap();
         Ok(response)
     }
@@ -161,7 +161,7 @@ impl FriendAPITrait for Bot {
             buf: request.encode_to_vec(),
             no_response: false,
         }).await.expect("send error");
-        let buf: Bytes = response.buf.into();
+        let buf: Bytes = response.buf.clone().into();
         let response = GetUinByUidResponse::decode(buf).unwrap();
         Ok(response)
     }

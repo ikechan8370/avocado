@@ -56,7 +56,7 @@ impl MessageAPITrait for Bot {
             buf: request.encode_to_vec(),
             no_response: false,
         }).await.expect("send error");
-        let buf: Bytes = response.buf.into();
+        let buf: Bytes = response.buf.clone().into();
         let response = SendMessageResponse::decode(buf).unwrap();
         Ok(response)
     }
@@ -73,7 +73,7 @@ impl MessageAPITrait for Bot {
             buf: request.encode_to_vec(),
             no_response: false,
         }).await.expect("send error");
-        let buf: Bytes = response.buf.into();
+        let buf: Bytes = response.buf.clone().into();
         let response = SendMessageByResIdResponse::decode(buf).unwrap();
         Ok(response)
     }
@@ -88,7 +88,7 @@ impl MessageAPITrait for Bot {
             buf: request.encode_to_vec(),
             no_response: false,
         }).await.expect("send error");
-        let buf: Bytes = response.buf.into();
+        let buf: Bytes = response.buf.clone().into();
         let response = SetMessageReadResponse::decode(buf).unwrap();
         Ok(response)
     }
@@ -104,7 +104,7 @@ impl MessageAPITrait for Bot {
             buf: request.encode_to_vec(),
             no_response: false,
         }).await.expect("send error");
-        let buf: Bytes = response.buf.into();
+        let buf: Bytes = response.buf.clone().into();
         let response = RecallMessageResponse::decode(buf).unwrap();
         Ok(response)
     }
@@ -122,7 +122,7 @@ impl MessageAPITrait for Bot {
             buf: request.encode_to_vec(),
             no_response: false,
         }).await.expect("send error");
-        let buf: Bytes = response.buf.into();
+        let buf: Bytes = response.buf.clone().into();
         let response = ReactMessageWithEmojiResponse::decode(buf).unwrap();
         Ok(response)
     }
@@ -138,7 +138,7 @@ impl MessageAPITrait for Bot {
             buf: request.encode_to_vec(),
             no_response: false,
         }).await.expect("send error");
-        let buf: Bytes = response.buf.into();
+        let buf: Bytes = response.buf.clone().into();
         let response = GetMessageResponse::decode(buf).unwrap();
         Ok(response)
     }
@@ -154,7 +154,7 @@ impl MessageAPITrait for Bot {
             buf: request.encode_to_vec(),
             no_response: false,
         }).await.expect("send error");
-        let buf: Bytes = response.buf.into();
+        let buf: Bytes = response.buf.clone().into();
         let response = GetMessageBySeqResponse::decode(buf).unwrap();
         Ok(response)
     }
@@ -171,7 +171,7 @@ impl MessageAPITrait for Bot {
             buf: request.encode_to_vec(),
             no_response: false,
         }).await.expect("send error");
-        let buf: Bytes = response.buf.into();
+        let buf: Bytes = response.buf.clone().into();
         let response = GetHistoryMessageResponse::decode(buf).unwrap();
         Ok(response)
     }
@@ -188,7 +188,7 @@ impl MessageAPITrait for Bot {
             buf: request.encode_to_vec(),
             no_response: false,
         }).await.expect("send error");
-        let buf: Bytes = response.buf.into();
+        let buf: Bytes = response.buf.clone().into();
         let response = GetHistoryMessageBySeqResponse::decode(buf).unwrap();
         Ok(response)
     }
@@ -205,7 +205,7 @@ impl MessageAPITrait for Bot {
             buf: request.encode_to_vec(),
             no_response: false,
         }).await.expect("send error");
-        let buf: Bytes = response.buf.into();
+        let buf: Bytes = response.buf.clone().into();
         let response = UploadForwardMessageResponse::decode(buf).unwrap();
         Ok(response)
     }
@@ -220,7 +220,7 @@ impl MessageAPITrait for Bot {
             buf: request.encode_to_vec(),
             no_response: false,
         }).await.expect("send error");
-        let buf: Bytes = response.buf.into();
+        let buf: Bytes = response.buf.clone().into();
         let response = DownloadForwardMessageResponse::decode(buf).unwrap();
         Ok(response)
     }
@@ -237,7 +237,7 @@ impl MessageAPITrait for Bot {
             buf: request.encode_to_vec(),
             no_response: false,
         }).await.expect("send error");
-        let buf: Bytes = response.buf.into();
+        let buf: Bytes = response.buf.clone().into();
         let response = GetEssenceMessageListResponse::decode(buf).unwrap();
         Ok(response)
     }
@@ -253,7 +253,7 @@ impl MessageAPITrait for Bot {
             buf: request.encode_to_vec(),
             no_response: false,
         }).await.expect("send error");
-        let buf: Bytes = response.buf.into();
+        let buf: Bytes = response.buf.clone().into();
         let response = SetEssenceMessageResponse::decode(buf).unwrap();
         Ok(response)
     }
@@ -269,7 +269,7 @@ impl MessageAPITrait for Bot {
             buf: request.encode_to_vec(),
             no_response: false,
         }).await.expect("send error");
-        let buf: Bytes = response.buf.into();
+        let buf: Bytes = response.buf.clone().into();
         let response = DeleteEssenceMessageResponse::decode(buf).unwrap();
         Ok(response)
     }

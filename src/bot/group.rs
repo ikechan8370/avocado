@@ -8,7 +8,7 @@ use crate::kritor::server::kritor_proto::get_group_member_info_request::Target;
 use crate::kritor::server::kritor_proto::*;
 use crate::kritor_err;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Group {
     pub inner: GroupInfo,
     pub members: HashMap<u64, GroupMemberInfo>,
@@ -79,9 +79,9 @@ impl GroupAPITrait for Bot {
             buf: request.encode_to_vec(),
             no_response: false,
         }).await.expect("send error");
-        let buf: Bytes = response.buf.into();
+        let buf: Bytes = response.buf.clone().into();
         if buf.is_empty() {
-            error!("request error: {}", response.msg.unwrap_or("".to_string()));
+            error!("request error: {}", response.msg.as_ref().cloned().unwrap_or("".to_string()));
             return kritor_err!("empty response");
         }
         let response = GetGroupListResponse::decode(buf).unwrap();
@@ -99,7 +99,7 @@ impl GroupAPITrait for Bot {
             no_response: false,
         };
         let response = self.send_request(request).await.expect("send error");
-        let buf: Bytes = response.buf.into();
+        let buf: Bytes = response.buf.clone().into();
         let group_info = GetGroupInfoResponse::decode(buf).unwrap();
         Ok(group_info)
     }
@@ -117,7 +117,7 @@ impl GroupAPITrait for Bot {
             no_response: false,
         };
         let response = self.send_request(request).await.expect("send error");
-        let buf: Bytes = response.buf.into();
+        let buf: Bytes = response.buf.clone().into();
         let group_member_info = GetGroupMemberInfoResponse::decode(buf).unwrap();
         Ok(group_member_info)
     }
@@ -135,7 +135,7 @@ impl GroupAPITrait for Bot {
             no_response: false,
         };
         let response = self.send_request(request).await.expect("send error");
-        let buf: Bytes = response.buf.into();
+        let buf: Bytes = response.buf.clone().into();
         let group_member_info = GetGroupMemberInfoResponse::decode(buf).unwrap();
         Ok(group_member_info)
     }
@@ -152,7 +152,7 @@ impl GroupAPITrait for Bot {
             no_response: false,
         };
         let response = self.send_request(request).await.expect("send error");
-        let buf: Bytes = response.buf.into();
+        let buf: Bytes = response.buf.clone().into();
         let group_member_list = GetGroupMemberListResponse::decode(buf).unwrap();
         Ok(group_member_list)
     }
@@ -170,7 +170,7 @@ impl GroupAPITrait for Bot {
             no_response: false,
         };
         let response = self.send_request(request).await.expect("send error");
-        let buf: Bytes = response.buf.into();
+        let buf: Bytes = response.buf.clone().into();
         let ban_member_response = BanMemberResponse::decode(buf).unwrap();
         Ok(ban_member_response)
     }
@@ -187,7 +187,7 @@ impl GroupAPITrait for Bot {
             no_response: false,
         };
         let response = self.send_request(request).await.expect("send error");
-        let buf: Bytes = response.buf.into();
+        let buf: Bytes = response.buf.clone().into();
         let poke_member_response = PokeMemberResponse::decode(buf).unwrap();
         Ok(poke_member_response)
     }
@@ -206,7 +206,7 @@ impl GroupAPITrait for Bot {
             no_response: false,
         };
         let response = self.send_request(request).await.expect("send error");
-        let buf: Bytes = response.buf.into();
+        let buf: Bytes = response.buf.clone().into();
         let kick_member_response = KickMemberResponse::decode(buf).unwrap();
         Ok(kick_member_response)
     }
@@ -222,7 +222,7 @@ impl GroupAPITrait for Bot {
             no_response: false,
         };
         let response = self.send_request(request).await.expect("send error");
-        let buf: Bytes = response.buf.into();
+        let buf: Bytes = response.buf.clone().into();
         let leave_group_response = LeaveGroupResponse::decode(buf).unwrap();
         Ok(leave_group_response)
     }
@@ -240,7 +240,7 @@ impl GroupAPITrait for Bot {
             no_response: false,
         };
         let response = self.send_request(request).await.expect("send error");
-        let buf: Bytes = response.buf.into();
+        let buf: Bytes = response.buf.clone().into();
         let modify_member_card_response = ModifyMemberCardResponse::decode(buf).unwrap();
         Ok(modify_member_card_response)
     }
@@ -257,7 +257,7 @@ impl GroupAPITrait for Bot {
             no_response: false,
         };
         let response = self.send_request(request).await.expect("send error");
-        let buf: Bytes = response.buf.into();
+        let buf: Bytes = response.buf.clone().into();
         let modify_group_name_response = ModifyGroupNameResponse::decode(buf).unwrap();
         Ok(modify_group_name_response)
     }
@@ -274,7 +274,7 @@ impl GroupAPITrait for Bot {
             no_response: false,
         };
         let response = self.send_request(request).await.expect("send error");
-        let buf: Bytes = response.buf.into();
+        let buf: Bytes = response.buf.clone().into();
         let modify_group_remark_response = ModifyGroupRemarkResponse::decode(buf).unwrap();
         Ok(modify_group_remark_response)
     }
@@ -292,7 +292,7 @@ impl GroupAPITrait for Bot {
             no_response: false,
         };
         let response = self.send_request(request).await.expect("send error");
-        let buf: Bytes = response.buf.into();
+        let buf: Bytes = response.buf.clone().into();
         let set_group_admin_response = SetGroupAdminResponse::decode(buf).unwrap();
         Ok(set_group_admin_response)
     }
@@ -310,7 +310,7 @@ impl GroupAPITrait for Bot {
             no_response: false,
         };
         let response = self.send_request(request).await.expect("send error");
-        let buf: Bytes = response.buf.into();
+        let buf: Bytes = response.buf.clone().into();
         let set_group_unique_title_response = SetGroupUniqueTitleResponse::decode(buf).unwrap();
         Ok(set_group_unique_title_response)
     }
@@ -327,7 +327,7 @@ impl GroupAPITrait for Bot {
             no_response: false,
         };
         let response = self.send_request(request).await.expect("send error");
-        let buf: Bytes = response.buf.into();
+        let buf: Bytes = response.buf.clone().into();
         let set_group_whole_ban_response = SetGroupWholeBanResponse::decode(buf).unwrap();
         Ok(set_group_whole_ban_response)
     }
@@ -343,7 +343,7 @@ impl GroupAPITrait for Bot {
             no_response: false,
         };
         let response = self.send_request(request).await.expect("send error");
-        let buf: Bytes = response.buf.into();
+        let buf: Bytes = response.buf.clone().into();
         let get_prohibited_user_list_response = GetProhibitedUserListResponse::decode(buf).unwrap();
         Ok(get_prohibited_user_list_response)
     }
@@ -359,7 +359,7 @@ impl GroupAPITrait for Bot {
             no_response: false,
         };
         let response = self.send_request(request).await.expect("send error");
-        let buf: Bytes = response.buf.into();
+        let buf: Bytes = response.buf.clone().into();
         let get_remain_count_at_all_response = GetRemainCountAtAllResponse::decode(buf).unwrap();
         Ok(get_remain_count_at_all_response)
     }
@@ -375,7 +375,7 @@ impl GroupAPITrait for Bot {
             no_response: false,
         };
         let response = self.send_request(request).await.expect("send error");
-        let buf: Bytes = response.buf.into();
+        let buf: Bytes = response.buf.clone().into();
         let get_not_joined_group_info_response = GetNotJoinedGroupInfoResponse::decode(buf).unwrap();
         Ok(get_not_joined_group_info_response)
     }
@@ -392,7 +392,7 @@ impl GroupAPITrait for Bot {
             no_response: false,
         };
         let response = self.send_request(request).await.expect("send error");
-        let buf: Bytes = response.buf.into();
+        let buf: Bytes = response.buf.clone().into();
         let get_group_honor_response = GetGroupHonorResponse::decode(buf).unwrap();
         Ok(get_group_honor_response)
     }

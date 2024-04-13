@@ -98,7 +98,7 @@ impl Bot {
         drop(self_guard);
         match result {
             Ok(friends_response) => {
-                let info = friends_response.friends_info;
+                let info = friends_response.friends_info.clone();
                 let friend_num = info.len();
                 info!("Friends count: {}", friend_num);
                 let friends = info.into_iter().map(|info| {
@@ -130,9 +130,9 @@ impl Bot {
                     async move {
                         let _permit = semaphore_clone.acquire_owned().await.expect("Failed to acquire semaphore");
                         let self_guard = bot_clone.read().await;
-                        let group_members_info = self_guard.get_group_member_list(group_info.group_id, true).await.expect("Failed to get group member list").group_members_info;
+                        let group_members_info = &self_guard.get_group_member_list(group_info.group_id, true).await.expect("Failed to get group member list").group_members_info;
                         debug!("group member list: {:?}", group_info.group_id);
-                        (group_info.group_id, group_members_info)
+                        (group_info.group_id, group_members_info.clone())
                     }
                 }).collect::<FuturesUnordered<_>>(); // 使用 FuturesUnordered 来处理并发
                 let results: HashMap<u64, Vec<GroupMemberInfo>> = tasks.collect().await;
@@ -140,13 +140,13 @@ impl Bot {
                 debug!("prepare to update bot");
                 let self_guard = self_arc.write().await;
                 let mut final_groups = self_guard.groups.write().await;
-                for group_info in groups.groups_info {
+                for group_info in &groups.groups_info {
                     let group_id = group_info.group_id;
                     let group_members_info = results.get(&group_id).expect("Failed to get group members info");
                     let group_members_map = group_members_info.iter().map(|member_info| {
                         (member_info.uin, member_info.clone())
                     }).collect::<HashMap<u64, GroupMemberInfo>>();
-                    let group = Group::new(group_info, group_members_map);
+                    let group = Group::new(group_info.clone(), group_members_map);
                     final_groups.get_or_insert_with(HashMap::new).insert(group_id, group);
                 }
             }
@@ -304,7 +304,7 @@ impl Bot {
             buf: msg.encode_to_vec(),
             no_response: false,
         }).await.expect("send error");
-        let buf: Bytes = response.buf.into();
+        let buf: Bytes = response.buf.clone().into();
         let response = SendMessageResponse::decode(buf).unwrap();
         self.plus_one_sent();
         Ok(response)

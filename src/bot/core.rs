@@ -28,9 +28,9 @@ impl CoreAPITrait for Bot {
             buf: request.encode_to_vec(),
             no_response: false,
         }).await.expect("send error");
-        let buf: Bytes = response.buf.into();
+        let buf: Bytes = response.buf.clone().into();
         if buf.is_empty() {
-            error!("request error: {}", response.msg.unwrap_or("".to_string()));
+            error!("request error: {}", response.msg.as_ref().cloned().unwrap_or("".to_string()));
             return kritor_err!("empty response");
         }
         let response = GetVersionResponse::decode(buf).unwrap();
@@ -52,9 +52,9 @@ impl CoreAPITrait for Bot {
             buf: request.encode_to_vec(),
             no_response: false,
         }).await.expect("send error");
-        let buf: Bytes = response.buf.into();
+        let buf: Bytes = response.buf.clone().into();
         if buf.is_empty() {
-            error!("request error: {}", response.msg.unwrap_or("".to_string()));
+            error!("request error: {}", response.msg.as_ref().cloned().unwrap_or("".to_string()));
             return kritor_err!("empty response");
         }
         let response = DownloadFileResponse::decode(buf).unwrap();
@@ -69,9 +69,9 @@ impl CoreAPITrait for Bot {
             buf: request.encode_to_vec(),
             no_response: false,
         }).await.expect("send error");
-        let buf: Bytes = response.buf.into();
+        let buf: Bytes = response.buf.clone().into();
         if buf.is_empty() {
-            error!("request error: {}", response.msg.unwrap_or("".to_string()));
+            error!("request error: {}", response.msg.as_ref().cloned().unwrap_or("".to_string()));
             return kritor_err!("empty response");
         }
         let response = GetCurrentAccountResponse::decode(buf).unwrap();
@@ -89,9 +89,9 @@ impl CoreAPITrait for Bot {
             buf: request.encode_to_vec(),
             no_response: false,
         }).await.expect("send error");
-        let buf: Bytes = response.buf.into();
+        let buf: Bytes = response.buf.clone().into();
         if buf.is_empty() {
-            error!("request error: {}", response.msg.unwrap_or("".to_string()));
+            error!("request error: {}", response.msg.as_ref().cloned().unwrap_or("".to_string()));
             return kritor_err!("empty response");
         }
         let response = SwitchAccountResponse::decode(buf).unwrap();

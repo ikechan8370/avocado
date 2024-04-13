@@ -1,7 +1,8 @@
 use std::collections::HashMap;
+use std::future::Future;
 use std::sync::{Arc};
 use boa_engine::{Context, js_string, JsError, JsObject, JsResult, JsValue, NativeFunction};
-use boa_engine::object::builtins::{JsArray, JsRegExp};
+use boa_engine::object::builtins::{JsArray, JsMap, JsRegExp};
 use boa_engine::object::ObjectInitializer;
 use boa_engine::property::Attribute;
 use boa_engine::value::TryFromJs;
@@ -12,8 +13,9 @@ use crate::bot::bot::Bot;
 use crate::kritor::server::kritor_proto::{FriendInfo, GroupInfo, GroupMemberInfo};
 use boa_gc::{Finalize, GcRefCell, Trace};
 use serde_json::Value;
+use crate::kritor::server::BOTS;
 use crate::kritor::server::kritor_proto::common::*;
-use crate::kritor::server::kritor_proto::common::element::ElementType;
+use crate::kritor::server::kritor_proto::common::element::{Data, ElementType};
 use crate::service::service::Elements;
 
 struct Logger {
@@ -95,44 +97,38 @@ pub async fn generate_context(bot: Arc<RwLock<Bot>>) -> Context {
     // uid
     let uid = bot_guard.get_uid().unwrap_or_default();
     // gl gml
-    let gm = bot_guard.get_groups().read().await;
-    let mut gl: HashMap<String, GroupInfo> = HashMap::new();
-    let mut gml: HashMap<String, HashMap<String, GroupMemberInfo>> = HashMap::new();
+    let groups = bot_guard.get_groups();
+    let gm = groups.read().await;
+    let mut gl = JsMap::new(&mut context);
+    let mut gml = JsMap::new(&mut context);
     if let Some(&ref gm) = gm.as_ref() {
         for (k, v) in gm.iter() {
-            gl.insert(k.to_string(), (*v).clone());
-            gml.insert(k.to_string(), v.members.clone());
+            gl.set(js_string!(k.to_string()), JsObject::from_proto_and_data(None, (*v).clone().inner), &mut context).unwrap();
+            let mut ml = JsMap::new(&mut context);
+            v.members.iter().for_each(|(k, v)| {
+                ml.set(js_string!(k.to_string()), JsObject::from_proto_and_data(None, (*v).clone()), &mut context).unwrap();
+            });
+            gml.set(js_string!(k.to_string()), ml, &mut context).unwrap();
         }
     }
 
-    let fm = bot_guard.get_friends().read().await;
-    let mut fl: HashMap<String, FriendInfo> = HashMap::new();
+    let friends = bot_guard.get_friends();
+    let fm = friends.read().await;
+    let mut fl = JsMap::new(&mut context);
     if let Some(&ref fm) = fm.as_ref() {
         for (k, v) in fm.iter() {
-            fl.insert(k.to_string(), (*v).clone());
+            fl.set(js_string!(k.to_string()), JsObject::from_proto_and_data(None, (*v).clone().inner), &mut context).unwrap();
         }
     }
+
 
     let bot = ObjectInitializer::new(&mut context)
         .property(js_string!("uin"), uin, Attribute::all())
-        .property(js_string!("uid"), uid.as_str(), Attribute::all())
+        .property(js_string!("uid"), js_string!(uid), Attribute::all())
         .property(js_string!("gl"), gl, Attribute::all())
         .property(js_string!("gml"), gml, Attribute::all())
         .property(js_string!("fl"), fl, Attribute::all())
-        .function(NativeFunction::from_async_fn(|_this, args, _ctx| {
-            let msg = args.get(0).unwrap();
-
-            let contact = args.get(1).unwrap().as_object().unwrap();
-            let reply = args.get(2).unwrap().as_boolean().unwrap();
-            async move {
-                let bot_guard = bot.read().await;
-                let elements = elements_from_js(msg.clone(), &mut context).unwrap();
-                let contact = Contact::try_from_js(contact, &mut context).unwrap();
-                let response = bot_guard.send_msg(elements, contact).await.unwrap();
-                // todo how to return custom object?
-                Ok(JsValue::Undefined)
-            }
-        }), js_string!("sendMessage"), 3)
+        .function(NativeFunction::from_async_fn(send_msg), js_string!("sendMessage"), 3)
         .build();
 
     context
@@ -147,48 +143,54 @@ pub async fn generate_context(bot: Arc<RwLock<Bot>>) -> Context {
 
 fn elements_from_js(value: JsValue, context: &mut Context) -> JsResult<Vec<Element>> {
     if value.is_string() {
-        return vec![Element {
+        return Ok(vec![Element {
             r#type: i32::from(ElementType::Text),
-            data: TextElement {
-                text: value.as_string().unwrap().to_string(),
-            },
-        }];
+            data: Some(Data::Text(TextElement {
+                text: value.as_string().unwrap().to_std_string_escaped(),
+            })),
+        }]);
     }
     let obj = value.as_object().unwrap();
     if !obj.is_array() {
         let elem_type = obj.get(js_string!("type"), context).unwrap().as_string().unwrap().to_std_string_escaped();
-        let data = obj.get(js_string!("data"), context).unwrap().as_object().unwrap();
-        return vec![Element {
+        let data = &obj.get(js_string!("data"), context).unwrap();
+        return Ok(vec![Element {
             r#type: ElementType::from_str_name(elem_type.as_str()).unwrap().into(),
-            data: match ElementType::from_str_name(elem_type.as_str()).unwrap() {
-                ElementType::Text => TextElement::try_from_js(data, context),
-                ElementType::At => AtElement::try_from_js(data, context),
-                ElementType::Face => FaceElement::try_from_js(data, context),
-                ElementType::BubbleFace => BubbleFaceElement::try_from_js(data, context),
-                ElementType::Reply => ReplyElement::try_from_js(data, context),
-                ElementType::Image => ImageElement::try_from_js(data, context),
+            data: Some(match ElementType::from_str_name(elem_type.as_str()).unwrap() {
+                ElementType::Text => Data::Text(TextElement::try_from_js(data, context)?),
+                ElementType::At => Data::At(AtElement::try_from_js(data, context)?),
+                ElementType::Face => Data::Face(FaceElement::try_from_js(data, context)?),
+
+                ElementType::BubbleFace => Data::BubbleFace(BubbleFaceElement::try_from_js(data, context)?),
+                ElementType::Reply => Data::Reply(ReplyElement::try_from_js(data, context)?),
+                ElementType::Image => Data::Image(ImageElement::try_from_js(data, context)?),
                 // ElementType::Voice => VoiceElement::try_from_js(data, context), // todo
                 // ElementType::Video => VideoElement::try_from_js(data, context), // todo
-                ElementType::Basketball => BasketballElement::try_from_js(data, context),
-                ElementType::Dice => DiceElement::try_from_js(data, context),
-                ElementType::Rps => RpsElement::try_from_js(data, context),
-                ElementType::Poke => PokeElement::try_from_js(data, context),
+                ElementType::Basketball => Data::Basketball(BasketballElement::try_from_js(data, context)?),
+                ElementType::Dice => Data::Dice(DiceElement::try_from_js(data, context)?),
+                ElementType::Rps => Data::Rps(RpsElement::try_from_js(data, context)?),
+                ElementType::Poke => Data::Poke(PokeElement::try_from_js(data, context)?),
                 // ElementType::Music => MusicElement::try_from_js(data, context), // todo
-                ElementType::Weather => WeatherElement::try_from_js(data, context),
-                ElementType::Location => LocationElement::try_from_js(data, context),
-                ElementType::Share => ShareElement::try_from_js(data, context),
-                ElementType::Gift => GiftElement::try_from_js(data, context),
-                ElementType::MarketFace => MarketFaceElement::try_from_js(data, context),
-                ElementType::Forward => ForwardElement::try_from_js(data, context),
-                ElementType::Contact => ContactElement::try_from_js(data, context),
-                ElementType::Json => JsonElement::try_from_js(data, context),
-                ElementType::Xml => XmlElement::try_from_js(data, context),
-                ElementType::File => FileElement::try_from_js(data, context),
-                ElementType::Markdown => MarkdownElement::try_from_js(data, context),
-                ElementType::Keyboard => KeyboardElement::try_from_js(data, context),
-                _ => None
-            }.unwrap(),
-        }];
+                ElementType::Weather => Data::Weather(WeatherElement::try_from_js(data, context)?),
+                // ElementType::Location => Data::Location(LocationElement::try_from_js(data, context)?),
+                ElementType::Share => Data::Share(ShareElement::try_from_js(data, context)?),
+                ElementType::Gift => Data::Gift(GiftElement::try_from_js(data, context)?),
+                ElementType::MarketFace => Data::MarketFace(MarketFaceElement::try_from_js(data, context)?),
+                ElementType::Forward => Data::Forward(ForwardElement::try_from_js(data, context)?),
+                ElementType::Contact => Data::Contact(ContactElement::try_from_js(data, context)?),
+                ElementType::Json => Data::Json(JsonElement::try_from_js(data, context)?),
+                ElementType::Xml => Data::Xml(XmlElement::try_from_js(data, context)?),
+                ElementType::File => Data::File(FileElement::try_from_js(data, context)?),
+                ElementType::Markdown => Data::Markdown(MarkdownElement::try_from_js(data, context)?),
+                // ElementType::Keyboard => Data::Keyboard(KeyboardElement::try_from_js(data, context)?),
+                _ => {
+                    error!("unexpected type for arg data");
+                    Data::Text(TextElement {
+                        text: "error: unexpected type for arg data".to_string(),
+                    })
+                }
+            }),
+        }]);
     }
 
     let mut elements = Vec::new();
@@ -197,40 +199,67 @@ fn elements_from_js(value: JsValue, context: &mut Context) -> JsResult<Vec<Eleme
         let v = array.get(i, context)?;
         let obj = v.as_object().unwrap();
         let elem_type = obj.get(js_string!("type"), context).unwrap().as_string().unwrap().to_std_string_escaped();
-        let data = obj.get(js_string!("data"), context).unwrap().as_object().unwrap();
+        let data =& obj.get(js_string!("data"), context).unwrap();
         let element = Element {
             r#type: ElementType::from_str_name(elem_type.as_str()).unwrap().into(),
-            data: match ElementType::from_str_name(elem_type.as_str()).unwrap() {
-                ElementType::Text => TextElement::try_from_js(data, context),
-                ElementType::At => AtElement::try_from_js(data, context),
-                ElementType::Face => FaceElement::try_from_js(data, context),
-                ElementType::BubbleFace => BubbleFaceElement::try_from_js(data, context),
-                ElementType::Reply => ReplyElement::try_from_js(data, context),
-                ElementType::Image => ImageElement::try_from_js(data, context),
+            data: Some(match ElementType::from_str_name(elem_type.as_str()).unwrap() {
+                ElementType::Text => Data::Text(TextElement::try_from_js(data, context)?),
+                ElementType::At => Data::At(AtElement::try_from_js(data, context)?),
+                ElementType::Face => Data::Face(FaceElement::try_from_js(data, context)?),
+
+                ElementType::BubbleFace => Data::BubbleFace(BubbleFaceElement::try_from_js(data, context)?),
+                ElementType::Reply => Data::Reply(ReplyElement::try_from_js(data, context)?),
+                ElementType::Image => Data::Image(ImageElement::try_from_js(data, context)?),
                 // ElementType::Voice => VoiceElement::try_from_js(data, context), // todo
                 // ElementType::Video => VideoElement::try_from_js(data, context), // todo
-                ElementType::Basketball => BasketballElement::try_from_js(data, context),
-                ElementType::Dice => DiceElement::try_from_js(data, context),
-                ElementType::Rps => RpsElement::try_from_js(data, context),
-                ElementType::Poke => PokeElement::try_from_js(data, context),
+                ElementType::Basketball => Data::Basketball(BasketballElement::try_from_js(data, context)?),
+                ElementType::Dice => Data::Dice(DiceElement::try_from_js(data, context)?),
+                ElementType::Rps => Data::Rps(RpsElement::try_from_js(data, context)?),
+                ElementType::Poke => Data::Poke(PokeElement::try_from_js(data, context)?),
                 // ElementType::Music => MusicElement::try_from_js(data, context), // todo
-                ElementType::Weather => WeatherElement::try_from_js(data, context),
-                ElementType::Location => LocationElement::try_from_js(data, context),
-                ElementType::Share => ShareElement::try_from_js(data, context),
-                ElementType::Gift => GiftElement::try_from_js(data, context),
-                ElementType::MarketFace => MarketFaceElement::try_from_js(data, context),
-                ElementType::Forward => ForwardElement::try_from_js(data, context),
-                ElementType::Contact => ContactElement::try_from_js(data, context),
-                ElementType::Json => JsonElement::try_from_js(data, context),
-                ElementType::Xml => XmlElement::try_from_js(data, context),
-                ElementType::File => FileElement::try_from_js(data, context),
-                ElementType::Markdown => MarkdownElement::try_from_js(data, context),
-                ElementType::Keyboard => KeyboardElement::try_from_js(data, context),
-                _ => None
-            }.unwrap(),
+                ElementType::Weather => Data::Weather(WeatherElement::try_from_js(data, context)?),
+                // ElementType::Location => Data::Location(LocationElement::try_from_js(data, context)?),
+                ElementType::Share => Data::Share(ShareElement::try_from_js(data, context)?),
+                ElementType::Gift => Data::Gift(GiftElement::try_from_js(data, context)?),
+                ElementType::MarketFace => Data::MarketFace(MarketFaceElement::try_from_js(data, context)?),
+                ElementType::Forward => Data::Forward(ForwardElement::try_from_js(data, context)?),
+                ElementType::Contact => Data::Contact(ContactElement::try_from_js(data, context)?),
+                ElementType::Json => Data::Json(JsonElement::try_from_js(data, context)?),
+                ElementType::Xml => Data::Xml(XmlElement::try_from_js(data, context)?),
+                ElementType::File => Data::File(FileElement::try_from_js(data, context)?),
+                ElementType::Markdown => Data::Markdown(MarkdownElement::try_from_js(data, context)?),
+                // ElementType::Keyboard => Data::Keyboard(KeyboardElement::try_from_js(data, context)?),
+                _ => {
+                    error!("unexpected type for arg data");
+                    Data::Text(TextElement {
+                        text: "error: unexpected type for arg data".to_string(),
+                    })
+                }
+            }),
         };
         elements.push(element);
     }
     Ok(elements)
 
+}
+
+fn send_msg(
+    _this: &JsValue,
+    args: &[JsValue],
+    context: &mut Context,
+) -> impl Future<Output=JsResult<JsValue>> {
+    let msg = args.get(0).unwrap();
+    let contact = args.get(1).unwrap();
+    let reply = args.get(2).unwrap().as_boolean().unwrap();
+    let self_id = args.get(3).unwrap().as_string().unwrap().to_std_string_escaped();
+    let elements = elements_from_js(msg.clone(), context).unwrap();
+    let contact = Contact::try_from_js(contact, context).unwrap();
+
+    async move {
+        let bots = BOTS.read().await;
+        let bot = bots.get(&self_id).unwrap();
+        let bot_guard = bot.read().await;
+        let response = bot_guard.send_msg(elements, contact).await.unwrap();
+        Ok(JsObject::from_proto_and_data(None, response).into())
+    }
 }

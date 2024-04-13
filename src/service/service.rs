@@ -65,28 +65,29 @@ impl KritorContext {
         match self.r#type {
             EventType::Message => {
                 let bot_guard = self.bot.read().await;
-                bot_guard.send_msg(elements, self.message.clone().unwrap().contact.unwrap()).await
+                let msg = self.message.as_ref().cloned().unwrap();
+                bot_guard.send_msg(elements, msg.contact.as_ref().cloned().unwrap()).await
             }
             EventType::Notice => {
                 let contact = match self.notice.as_ref().unwrap().notice.as_ref().cloned().unwrap() {
                     Notice::FriendPoke(n) => {
                         Contact {
                             scene: Scene::Friend.into(),
-                            peer: n.operator_uid,
+                            peer: n.operator_uid.clone(),
                             sub_peer: None,
                         }
                     },
                     Notice::FriendRecall(n) => {
                         Contact {
                             scene: Scene::Friend.into(),
-                            peer: n.operator_uid,
+                            peer: n.operator_uid.clone(),
                             sub_peer: None,
                         }
                     },
                     Notice::FriendFileUploaded(n) => {
                         Contact {
                             scene: Scene::Friend.into(),
-                            peer: n.operator_uid,
+                            peer: n.operator_uid.clone(),
                             sub_peer: None,
                         }
                     },
@@ -193,7 +194,7 @@ impl KritorContext {
             elements.insert(0, Element {
                 r#type: i32::from(ElementType::Reply),
                 data: Some(Data::Reply(ReplyElement {
-                    message_id: self.message.clone().unwrap().message_id,
+                    message_id: self.message.as_ref().cloned().unwrap().message_id.clone(),
                 })),
             });
         }
