@@ -11,6 +11,7 @@ use tonic::{transport::Server};
 use crate::kritor::server::{EventListener, ReverseListener};
 use crate::kritor::server::kritor_proto::event_service_server::EventServiceServer;
 use crate::kritor::server::kritor_proto::reverse_service_server::ReverseServiceServer;
+use crate::service::external::javascript::service::register_js_plugins;
 
 pub static LOG_INIT: Lazy<()> = Lazy::new(|| {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
@@ -20,6 +21,7 @@ pub static LOG_INIT: Lazy<()> = Lazy::new(|| {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let addr = "0.0.0.0:7001".parse()?;
+    register_js_plugins().await;
     let event_listener = EventListener::default();
     let reverse_listener = ReverseListener::default();
     Server::builder()

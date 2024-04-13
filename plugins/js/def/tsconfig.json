@@ -1,0 +1,10 @@
+{
+  "compilerOptions": {
+    "target": "es2015", // 指定编译目标为 ES2015 或更高版本
+    "lib": ["es2015", "dom"], // 包含 ES2015 标准库和 DOM 标准库
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  }
+}

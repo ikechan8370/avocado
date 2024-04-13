@@ -53,7 +53,33 @@ impl TryFromJs for Contact {
     }
 }
 
-#[derive(boa_engine::JsData)]
-struct GroupInfoJs {
-    inner: GroupInfo,
+#[derive(boa_engine::value::TryFromJs, Default, Debug)]
+#[derive(boa_engine::JsData, boa_engine::Trace, boa_engine::Finalize)]
+#[derive(Clone, PartialEq)]
+pub struct ContactJsObject {
+    pub scene: String,
+    pub peer: String,
+    pub sub_peer: Option<String>
+}
+
+impl From<Contact> for ContactJsObject {
+    fn from(contact: Contact) -> ContactJsObject {
+        let scene = Scene::try_from(contact.scene).unwrap().as_str_name().to_uppercase().to_string();
+        ContactJsObject {
+            scene,
+            peer: contact.peer,
+            sub_peer: contact.sub_peer,
+        }
+    }
+}
+
+impl From<ContactJsObject> for Contact {
+    fn from(value: ContactJsObject) -> Self {
+        let scene = Scene::from_str_name(&value.scene.to_uppercase()).unwrap();
+        Self {
+            scene: scene.into(),
+            peer: value.peer.clone(),
+            sub_peer: value.sub_peer.clone(),
+        }
+    }
 }

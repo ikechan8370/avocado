@@ -1,5 +1,5 @@
 pub mod bot;
-mod group;
-mod friend;
-mod message;
-mod core;
+pub mod group;
+pub mod friend;
+pub mod message;
+pub mod core;
