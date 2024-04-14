@@ -3,11 +3,12 @@ use std::sync::{Arc};
 use log::{debug, info};
 use once_cell::sync::Lazy;
 use tokio::runtime::Runtime;
-use tokio::sync::{Mutex, MutexGuard, RwLock};
+use tokio::sync::{Mutex, RwLock};
 use avocado_common::Event;
 use crate::bot::bot::Bot;
 use crate::LOG_INIT;
-use crate::service::service::{KritorContext, Service};
+use crate::model::config::get_config;
+use crate::service::service::{get_concat_from_event, KritorContext, Service};
 use crate::utils::kritor::same_contact_and_sender;
 
 pub type KritorEvent = crate::kritor::server::kritor_proto::event_structure::Event;
@@ -37,17 +38,26 @@ pub async fn listen_to_events(bot: Arc<RwLock<Bot>>) {
     let mut message_receiver = bot_guard.subscribe_message();
     let mut notice_receiver = bot_guard.subscribe_notice();
     let mut request_receiver = bot_guard.subscribe_request();
-    async fn dispatch(handlers: MutexGuard<'_, HashMap<String, EventHandler>>, event_arc: Arc<KritorEvent>, bot: Arc<RwLock<Bot>>) {
+    async fn dispatch(handlers: &HashMap<String, EventHandler>, event_arc: Arc<KritorEvent>, bot: Arc<RwLock<Bot>>) {
         let con = {
             let bot = bot.read().await;
             let lock = bot.get_broadcast_lock().await;
             lock
         };
+        let config = get_config().await;
+
+        // 判断主人
+        let (_contact, sender) = get_concat_from_event(event_arc.as_ref());
+        let is_master = if let Some(owner) = config.owner.as_ref() {
+            owner.contains(&sender.as_ref().map(|s| s.uid.clone()).unwrap_or_default())
+                || owner.contains(&sender.as_ref().map(|s| s.uin).unwrap_or_default().unwrap_or(0).to_string())
+        } else { false };
+
         for service_name in handlers.keys() {
             let service = handlers.get(service_name).unwrap();
             let service_clone = Arc::clone(service);
             let event_clone = Arc::clone(&event_arc);
-            let context = KritorContext::new(event_clone.as_ref().clone(), bot.clone(), service_name.clone());
+            let context = KritorContext::new(event_clone.as_ref().clone(), bot.clone(), service_name.clone(), is_master);
             if let KritorEvent::Message(ref message) = event_arc.as_ref() {
                 let current_contact = message.contact.clone().unwrap();
                 let current_sender = message.sender.clone().unwrap();
@@ -85,7 +95,7 @@ pub async fn listen_to_events(bot: Arc<RwLock<Bot>>) {
             {
                 bot_clone.read().await.plus_one_receive();
             }
-            dispatch(handlers, event_arc, bot_clone.clone()).await;
+            dispatch(&handlers, event_arc, bot_clone.clone()).await;
         }
     });
     let bot_clone = bot.clone();
@@ -94,7 +104,7 @@ pub async fn listen_to_events(bot: Arc<RwLock<Bot>>) {
             debug!("Received event: {:?}", event);
             let event_arc = Arc::new(KritorEvent::Notice(event)); // 将消息体包裹在Arc中
             let handlers = NOTICE_SERVICES.lock().await;
-            dispatch(handlers, event_arc, bot_clone.clone()).await;
+            dispatch(&handlers, event_arc, bot_clone.clone()).await;
         }
     });
     let bot_clone = bot.clone();
@@ -104,7 +114,7 @@ pub async fn listen_to_events(bot: Arc<RwLock<Bot>>) {
             let event_arc = Arc::new(KritorEvent::Request(event)); // 将消息体包裹在Arc中
 
             let handlers = REQUEST_SERVICES.lock().await;
-            dispatch(handlers, event_arc, bot_clone.clone()).await;
+            dispatch(&handlers, event_arc, bot_clone.clone()).await;
         }
     });
 }
@@ -127,15 +137,15 @@ async fn _register_service(service: Arc<dyn Service + Send + Sync>, event: Vec<E
             Event::Notice => {
                 let mut handlers = NOTICE_SERVICES.lock().await;
                 handlers.insert(name.clone(), service.clone());
-            },
+            }
             Event::Message => {
                 let mut handlers = MESSAGE_SERVICES.lock().await;
                 handlers.insert(name.clone(), service.clone());
-            },
+            }
             Event::Request => {
                 let mut handlers = REQUEST_SERVICES.lock().await;
                 handlers.insert(name.clone(), service.clone());
-            },
+            }
         }
     }
 }

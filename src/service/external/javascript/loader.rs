@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::future::Future;
-use std::sync::{Arc, RwLockReadGuard};
+
 use boa_engine::{Context, js_string, JsError, JsObject, JsResult, JsValue, NativeFunction};
 use boa_engine::object::builtins::{JsArray, JsMap, JsRegExp};
 use boa_engine::object::ObjectInitializer;
@@ -8,18 +8,13 @@ use boa_engine::property::Attribute;
 use boa_engine::value::TryFromJs;
 use boa_runtime::Console;
 use log::{debug, error, info, warn};
-use tokio::sync::RwLock;
-use crate::bot::bot::Bot;
-use crate::kritor::server::kritor_proto::{FriendInfo, GroupInfo, GroupMemberInfo};
-use boa_gc::{Finalize, GcRefCell, Trace};
-use serde_json::Value;
 use crate::bot::friend::Friend;
 use crate::bot::group::Group;
 use crate::kritor::r#impl::ContactJsObject;
 use crate::kritor::server::BOTS;
 use crate::kritor::server::kritor_proto::common::*;
 use crate::kritor::server::kritor_proto::common::element::{Data, ElementType};
-use crate::service::service::Elements;
+use crate::service::service::KritorContext;
 
 struct Logger {
     pub debug: NativeFunction,
@@ -59,7 +54,8 @@ pub fn generate_context(groups: &Option<HashMap<u64, Group>>,
                         sender: Option<Sender>,
                         contact: Option<Contact>,
                         elements: Vec<Element>,
-    plugin_name: String
+    plugin_name: String,
+    kritor_context: &KritorContext
 ) -> Context {
     let mut context = Context::default();
 
@@ -109,12 +105,12 @@ pub fn generate_context(groups: &Option<HashMap<u64, Group>>,
     // 注入 Bot
 
     // gl gml
-    let mut gl = JsMap::new(&mut context);
-    let mut gml = JsMap::new(&mut context);
+    let gl = JsMap::new(&mut context);
+    let gml = JsMap::new(&mut context);
     if let Some(&ref gm) = groups.as_ref() {
         for (k, v) in gm.iter() {
             gl.set(js_string!(k.to_string()), JsObject::from_proto_and_data(None, (*v).clone().inner), &mut context).unwrap();
-            let mut ml = JsMap::new(&mut context);
+            let ml = JsMap::new(&mut context);
             v.members.iter().for_each(|(k, v)| {
                 ml.set(js_string!(k.to_string()), JsObject::from_proto_and_data(None, (*v).clone()), &mut context).unwrap();
             });
@@ -122,7 +118,7 @@ pub fn generate_context(groups: &Option<HashMap<u64, Group>>,
         }
     }
 
-    let mut fl = JsMap::new(&mut context);
+    let fl = JsMap::new(&mut context);
     if let Some(&ref fm) = fm.as_ref() {
         for (k, v) in fm.iter() {
             fl.set(js_string!(k.to_string()), JsObject::from_proto_and_data(None, (*v).clone().inner), &mut context).unwrap();
@@ -136,13 +132,14 @@ pub fn generate_context(groups: &Option<HashMap<u64, Group>>,
         .property(js_string!("gl"), gl, Attribute::all())
         .property(js_string!("gml"), gml, Attribute::all())
         .property(js_string!("fl"), fl, Attribute::all())
+        .property(js_string!("nickname"), js_string!(nickname), Attribute::all())
         .function(NativeFunction::from_async_fn(send_msg), js_string!("sendMessage"), 3)
         .build();
 
     context
         .register_global_property(
             js_string!("Bot"),
-            bot,
+            bot.clone(),
             Attribute::all()).unwrap();
 
     // e
@@ -153,12 +150,15 @@ pub fn generate_context(groups: &Option<HashMap<u64, Group>>,
         }
     }).collect::<Vec<String>>().join("");
     let contact_js = contact.map(ContactJsObject::from).unwrap();
+    let is_master = kritor_context.is_master;
     let e = ObjectInitializer::new(&mut context)
         .property(js_string!("msg"), js_string!(msg), Attribute::all())
         .property(js_string!("sender"), JsObject::from_proto_and_data(None, sender), Attribute::all())
         .property(js_string!("contact"), JsObject::from_proto_and_data(None, contact_js), Attribute::all())
         .property(js_string!("uin"), uin, Attribute::all())
         .property(js_string!("uid"), js_string!(uid.clone()), Attribute::all())
+        .property(js_string!("is_master"), is_master, Attribute::all())
+        .property(js_string!("bot"), bot, Attribute::all())
         .function(NativeFunction::from_async_fn(reply), js_string!("reply"), 2)
         .build();
 

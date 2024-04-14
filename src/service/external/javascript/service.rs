@@ -5,9 +5,10 @@ use async_trait::async_trait;
 use boa_engine::Source;
 use avocado_common::Event;
 use crate::kritor::server::kritor_proto::common::{Contact, Scene};
+use crate::kritor::server::kritor_proto::{event_structure, EventStructure};
 use crate::service::external::javascript::loader::generate_context;
 use crate::service::register::register_service;
-use crate::service::service::{KritorContext, Matchable, Service};
+use crate::service::service::{get_concat_from_event, KritorContext, Matchable, Service};
 use crate::utils::kritor::same_contact_and_sender;
 
 
@@ -43,32 +44,13 @@ impl Service for ExternalJsService {
             let service_name = context.current_service_name.read().await;
             service_name.clone()
         };
-        let (sender, contact) = {
+        let (contact, sender) = {
             if let Some(messages) = context.message.as_ref() {
-                (
-                    context.message.clone().map(|message| message.sender.unwrap()),
-                    context.message.clone().map(|message| message.contact.unwrap())
-                )
+                (messages.contact.clone(), messages.sender.clone())
             } else if let Some(notice) = context.notice.as_ref() {
-                (
-                    None,
-                    // todo
-                    Some(Contact {
-                        scene: Scene::Group.into(),
-                        peer: "".to_string(),
-                        sub_peer: None,
-                    })
-                )
+                get_concat_from_event(&event_structure::Event::Notice(notice.clone()))
             } else if let Some(request) = context.request.as_ref() {
-                (
-                    None,
-                    // todo
-                    Some(Contact {
-                        scene: Scene::Group.into(),
-                        peer: "".to_string(),
-                        sub_peer: None,
-                    })
-                )
+                get_concat_from_event(&event_structure::Event::Request(request.clone()))
             } else {
                 (None, None)
             }
@@ -76,7 +58,7 @@ impl Service for ExternalJsService {
         let mut boa_context = generate_context(&group, &friends, bot.get_uin().unwrap_or_default(), bot.get_uid().unwrap_or_default(),
                                                nickname.unwrap_or_default(),
                                                sender, contact,
-                                               elements.unwrap_or_default(), plugin_name.unwrap_or("unknown".to_string()));
+                                               elements.unwrap_or_default(), plugin_name.unwrap_or("unknown".to_string()), &context);
 
         let source = Source::from_filepath(self.entry_path.as_path()).unwrap();
         boa_context.eval(source).expect("external javascript plugin execute error");

@@ -101,30 +101,62 @@ impl From<ZipError> for Error {
     }
 }
 
+impl From<toml::de::Error> for Error {
+    fn from(e: toml::de::Error) -> Self {
+        let msg = format!("{}", e);
+        Error {
+            msg,
+            kind: Kind::Internal
+        }
+    }
+}
+
+impl From<std::io::Error> for Error {
+    fn from(e: std::io::Error) -> Self {
+        let msg = format!("{}", e);
+        Error {
+            msg,
+            kind: Kind::Internal
+        }
+    }
+}
+
 #[macro_export]
 macro_rules! err {
-    ($x:expr) => {
-        Err(crate::model::error::Error::new($x.to_string()))
+    ($msg:expr) => {
+        Err(crate::model::error::Error::new(String::from($msg)))
+    };
+    ($fmt:expr, $($arg:tt)*) => {
+        Err(crate::model::error::Error::new(format!($fmt, $($arg)*)))
     };
 }
 
 #[macro_export]
 macro_rules! kritor_err {
-    ($x:expr) => {
-        Err(crate::model::error::Error::kritor($x.to_string()))
+    ($msg:expr) => {
+        Err(crate::model::error::Error::kritor(String::from($msg)))
+    };
+    ($fmt:expr, $($arg:tt)*) => {
+        Err(crate::model::error::Error::kritor(format!($fmt, $($arg)*)))
     };
 }
 
 #[macro_export]
 macro_rules! client_err {
-    ($x:expr) => {
-        Err(crate::model::error::Error::client($x.to_string()))
+    ($msg:expr) => {
+        Err(crate::model::error::Error::client(String::from($msg)))
+    };
+    ($fmt:expr, $($arg:tt)*) => {
+        Err(crate::model::error::Error::client(format!($fmt, $($arg)*)))
     };
 }
 
 #[macro_export]
 macro_rules! network_err {
-    ($x:expr) => {
-        Err(crate::model::error::Error::network($x.to_string()))
+     ($msg:expr) => {
+        Err(crate::model::error::Error::network(String::from($msg)))
+    };
+    ($fmt:expr, $($arg:tt)*) => {
+        Err(crate::model::error::Error::network(format!($fmt, $($arg)*)))
     };
 }

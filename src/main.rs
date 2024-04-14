@@ -11,6 +11,7 @@ use tonic::{transport::Server};
 use crate::kritor::server::{EventListener, ReverseListener};
 use crate::kritor::server::kritor_proto::event_service_server::EventServiceServer;
 use crate::kritor::server::kritor_proto::reverse_service_server::ReverseServiceServer;
+use crate::model::config::notify_config_change;
 use crate::service::external::javascript::service::register_js_plugins;
 
 pub static LOG_INIT: Lazy<()> = Lazy::new(|| {
@@ -22,6 +23,7 @@ pub static LOG_INIT: Lazy<()> = Lazy::new(|| {
 async fn main() -> Result<(), Box<dyn Error>> {
     let addr = "0.0.0.0:7001".parse()?;
     register_js_plugins().await;
+    notify_config_change();
     let event_listener = EventListener::default();
     let reverse_listener = ReverseListener::default();
     Server::builder()

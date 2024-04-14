@@ -10,6 +10,7 @@ name = "avocado"
 path = "src/main.rs"
 
 [dependencies]
+toml = "0.8.12"
 tonic = "0.11"
 prost = "0.12"
 tokio = { version = "1.0", features = ["macros", "rt-multi-thread"] }
@@ -46,6 +47,7 @@ boa_gc = { version = "0.18.0" }
 winapi = { version = "0.3.9", optional = true, features = ["psapi", "processthreadsapi", "winnt"] }
 sysconf = { version = "0.3.4", optional = true }
 chrono = "0.4.37"
+notify = "6.1.1"
 
 [build-dependencies]
 tonic-build = "0.11"

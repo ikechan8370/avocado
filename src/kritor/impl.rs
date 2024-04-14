@@ -1,9 +1,8 @@
-use boa_engine::{Context, js_string, JsData, JsError, JsObject, JsResult, JsValue};
-use boa_engine::object::builtins::{JsArrayBuffer, JsMap};
+use boa_engine::{Context, js_string, JsResult, JsValue};
+use boa_engine::object::builtins::JsArrayBuffer;
 use boa_engine::value::TryFromJs;
+
 use crate::kritor::server::kritor_proto::common::{Contact, image_element, ImageElement, Scene};
-use crate::kritor::server::kritor_proto::common::element::Data;
-use crate::kritor::server::kritor_proto::GroupInfo;
 
 impl TryFromJs for ImageElement {
     fn try_from_js(value: &JsValue, context: &mut Context) -> JsResult<Self> {

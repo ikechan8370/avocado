@@ -9,3 +9,4 @@ export interface Plugin {
     process: (event: Event) => Promise<void>
 }
 
+export type AvocadoBot = import("./constants").AvocadoBot;

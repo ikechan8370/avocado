@@ -10,8 +10,10 @@ use tokio::sync::RwLock;
 use crate::{client_err, err};
 use crate::bot::bot::Bot;
 use crate::kritor::server::kritor_proto::{EventType, NoticeEvent, RequestEvent, SendMessageResponse};
-use crate::kritor::server::kritor_proto::common::{AtElement, Contact, Element, FileElement, ImageElement, PushMessageBody, ReplyElement, Scene, TextElement};
+use crate::kritor::server::kritor_proto::common::{AtElement, Contact, Element, FileElement, ImageElement, PushMessageBody, ReplyElement, Scene, Sender, TextElement};
 use crate::kritor::server::kritor_proto::common::element::{Data, ElementType};
+use crate::kritor::server::kritor_proto::event_structure::Event;
+use crate::kritor::server::kritor_proto::event_structure::Event::{Message};
 use crate::kritor::server::kritor_proto::notice_event::Notice;
 use crate::model::error::Result;
 use crate::service::register::KritorEvent;
@@ -25,11 +27,12 @@ pub struct KritorContext {
     pub bot: Arc<RwLock<Bot>>,
     pub current_service_name: Arc<RwLock<Option<String>>>,
     pub current_transaction_name: Arc<RwLock<Option<String>>>,
-    pub store: Arc<RwLock<HashMap<String, Box<dyn Any + Send + Sync>>>>
+    pub store: Arc<RwLock<HashMap<String, Box<dyn Any + Send + Sync>>>>,
+    pub is_master: bool,
 }
 
 impl KritorContext {
-    pub fn new(event: KritorEvent, bot: Arc<RwLock<Bot>>, service_name: String) -> Self {
+    pub fn new(event: KritorEvent, bot: Arc<RwLock<Bot>>, service_name: String, is_master: bool) -> Self {
         let mut s = Self {
             r#type: EventType::Message,
             message: None,
@@ -39,20 +42,21 @@ impl KritorContext {
             current_service_name: Arc::new(RwLock::new(Some(service_name))),
             current_transaction_name: Arc::new(RwLock::new(None)),
             store: Arc::new(Default::default()),
+            is_master,
         };
         match event {
             KritorEvent::Message(message) => {
                 s.message = Some(message);
                 s.r#type = EventType::Message;
-            },
+            }
             KritorEvent::Request(request) => {
                 s.request = Some(request);
                 s.r#type = EventType::Request;
-            },
+            }
             KritorEvent::Notice(notice) => {
                 s.notice = Some(notice);
                 s.r#type = EventType::Notice;
-            },
+            }
         };
         s
     }
@@ -69,113 +73,8 @@ impl KritorContext {
                 bot_guard.send_msg(elements, msg.contact.as_ref().cloned().unwrap()).await
             }
             EventType::Notice => {
-                let contact = match self.notice.as_ref().unwrap().notice.as_ref().cloned().unwrap() {
-                    Notice::FriendPoke(n) => {
-                        Contact {
-                            scene: Scene::Friend.into(),
-                            peer: n.operator_uid.clone(),
-                            sub_peer: None,
-                        }
-                    },
-                    Notice::FriendRecall(n) => {
-                        Contact {
-                            scene: Scene::Friend.into(),
-                            peer: n.operator_uid.clone(),
-                            sub_peer: None,
-                        }
-                    },
-                    Notice::FriendFileUploaded(n) => {
-                        Contact {
-                            scene: Scene::Friend.into(),
-                            peer: n.operator_uid.clone(),
-                            sub_peer: None,
-                        }
-                    },
-                    Notice::GroupPoke(n) => {
-                        Contact {
-                            scene: Scene::Group.into(),
-                            peer: n.group_id.to_string(),
-                            sub_peer: None,
-                        }
-                    },
-                    Notice::GroupCardChanged(n) => {
-                        Contact {
-                            scene: Scene::Group.into(),
-                            peer: n.group_id.to_string(),
-                            sub_peer: None,
-                        }
-                    },
-                    Notice::GroupMemberUniqueTitleChanged(n) => {
-                        Contact {
-                            scene: Scene::Group.into(),
-                            peer: n.group_id.to_string(),
-                            sub_peer: None,
-                        }
-                    },
-                    Notice::GroupEssenceChanged(n) => {
-                        Contact {
-                            scene: Scene::Group.into(),
-                            peer: n.group_id.to_string(),
-                            sub_peer: None,
-                        }
-                    },
-                    Notice::GroupRecall(n) => {
-                        Contact {
-                            scene: Scene::Group.into(),
-                            peer: n.group_id.to_string(),
-                            sub_peer: None,
-                        }
-                    },
-                    Notice::GroupMemberIncrease(n) => {
-                        Contact {
-                            scene: Scene::Group.into(),
-                            peer: n.group_id.to_string(),
-                            sub_peer: None,
-                        }
-                    },
-                    Notice::GroupMemberDecrease(n) => {
-                        Contact {
-                            scene: Scene::Group.into(),
-                            peer: n.group_id.to_string(),
-                            sub_peer: None,
-                        }
-                    },
-                    Notice::GroupAdminChange(n) => {
-                        Contact {
-                            scene: Scene::Group.into(),
-                            peer: n.group_id.to_string(),
-                            sub_peer: None,
-                        }
-                    },
-                    Notice::GroupMemberBan(n) => {
-                        Contact {
-                            scene: Scene::Group.into(),
-                            peer: n.group_id.to_string(),
-                            sub_peer: None,
-                        }
-                    },
-                    Notice::GroupSignIn(n) => {
-                        Contact {
-                            scene: Scene::Group.into(),
-                            peer: n.group_id.to_string(),
-                            sub_peer: None,
-                        }
-                    },
-                    Notice::GroupWholeBan(n) => {
-                        Contact {
-                            scene: Scene::Group.into(),
-                            peer: n.group_id.to_string(),
-                            sub_peer: None,
-                        }
-                    },
-                    Notice::GroupFileUploaded(n) => {
-                        Contact {
-                            scene: Scene::Group.into(),
-                            peer: n.group_id.to_string(),
-                            sub_peer: None,
-                        }
-                    },
-                };
+                let event = self.notice.as_ref().map(|n| Event::Notice(n.clone())).unwrap();
+                let contact = get_concat_from_event(&event).0.unwrap();
                 let bot_guard = self.bot.read().await;
                 bot_guard.send_msg(elements, contact).await
             }
@@ -246,7 +145,6 @@ pub trait Matchable {
     fn matches(&self, _context: KritorContext) -> bool {
         false
     }
-
 }
 
 impl dyn Service + Send + Sync {}
@@ -320,6 +218,213 @@ impl Elements for Vec<Element> {
     }
 }
 
+pub fn get_concat_from_event(event: &Event) -> (Option<Contact>, Option<Sender>) {
+    match event {
+        Message(message) => {
+            return (Some(message.contact.as_ref().cloned().unwrap()), Some(message.sender.as_ref().cloned().unwrap()));
+        }
+        Event::Request(_) => (None, None),
+        Event::Notice(notice) => {
+            match notice.notice.as_ref().unwrap() {
+                Notice::FriendPoke(n) => {
+                    let contact = Contact {
+                        scene: Scene::Friend.into(),
+                        peer: n.operator_uid.clone(),
+                        sub_peer: None,
+                    };
+                    let sender = Sender {
+                        uid: n.operator_uid.clone(),
+                        uin: Some(n.operator_uin),
+                        nick: None,
+                    };
+                    (Some(contact), Some(sender))
+                }
+                Notice::FriendRecall(n) => {
+                    let contact = Contact {
+                        scene: Scene::Friend.into(),
+                        peer: n.operator_uid.clone(),
+                        sub_peer: None,
+                    };
+                    let sender = Sender {
+                        uid: n.operator_uid.clone(),
+                        uin: Some(n.operator_uin),
+                        nick: None,
+                    };
+                    (Some(contact), Some(sender))
+                }
+                Notice::FriendFileUploaded(n) => {
+                    let contact = Contact {
+                        scene: Scene::Friend.into(),
+                        peer: n.operator_uid.clone(),
+                        sub_peer: None,
+                    };
+                    let sender = Sender {
+                        uid: n.operator_uid.clone(),
+                        uin: Some(n.operator_uin),
+                        nick: None,
+                    };
+                    (Some(contact), Some(sender))
+                }
+                Notice::GroupPoke(n) => {
+                    let contact = Contact {
+                        scene: Scene::Group.into(),
+                        peer: n.group_id.to_string(),
+                        sub_peer: None,
+                    };
+                    let sender = Sender {
+                        uid: n.operator_uid.clone(),
+                        uin: Some(n.operator_uin),
+                        nick: None,
+                    };
+                    (Some(contact), Some(sender))
+                }
+                Notice::GroupCardChanged(n) => {
+                    let contact = Contact {
+                        scene: Scene::Group.into(),
+                        peer: n.group_id.to_string(),
+                        sub_peer: None,
+                    };
+                    let sender = Sender {
+                        uid: n.operator_uid.clone(),
+                        uin: Some(n.operator_uin),
+                        nick: None,
+                    };
+                    (Some(contact), Some(sender))
+                }
+                Notice::GroupMemberUniqueTitleChanged(n) => {
+                    let contact = Contact {
+                        scene: Scene::Group.into(),
+                        peer: n.group_id.to_string(),
+                        sub_peer: None,
+                    };
+                    let sender = Sender {
+                        uid: String::default(),
+                        uin: Some(n.target),
+                        nick: None,
+                    };
+                    (Some(contact), Some(sender))
+                }
+                Notice::GroupEssenceChanged(n) => {
+                    let contact = Contact {
+                        scene: Scene::Group.into(),
+                        peer: n.group_id.to_string(),
+                        sub_peer: None,
+                    };
+                    let sender = Sender {
+                        uid: n.operator_uid.clone(),
+                        uin: Some(n.operator_uin),
+                        nick: None,
+                    };
+                    (Some(contact), Some(sender))
+                }
+                Notice::GroupRecall(n) => {
+                    let contact = Contact {
+                        scene: Scene::Group.into(),
+                        peer: n.group_id.to_string(),
+                        sub_peer: None,
+                    };
+                    let sender = Sender {
+                        uid: n.operator_uid.clone(),
+                        uin: Some(n.operator_uin),
+                        nick: None,
+                    };
+                    (Some(contact), Some(sender))
+                }
+                Notice::GroupMemberIncrease(n) => {
+                    let contact = Contact {
+                        scene: Scene::Group.into(),
+                        peer: n.group_id.to_string(),
+                        sub_peer: None,
+                    };
+                    let sender = Sender {
+                        uid: n.operator_uid.clone(),
+                        uin: Some(n.operator_uin),
+                        nick: None,
+                    };
+                    (Some(contact), Some(sender))
+                }
+                Notice::GroupMemberDecrease(n) => {
+                    let contact = Contact {
+                        scene: Scene::Group.into(),
+                        peer: n.group_id.to_string(),
+                        sub_peer: None,
+                    };
+                    let sender = Sender {
+                        uid: n.target_uid.clone().unwrap(),
+                        uin: Some(n.target_uin.unwrap()),
+                        nick: None,
+                    };
+                    (Some(contact), Some(sender))
+                }
+                Notice::GroupAdminChange(n) => {
+                    let contact = Contact {
+                        scene: Scene::Group.into(),
+                        peer: n.group_id.to_string(),
+                        sub_peer: None,
+                    };
+                    let sender = Sender {
+                        uid: n.target_uid.clone(),
+                        uin: Some(n.target_uin),
+                        nick: None,
+                    };
+                    (Some(contact), Some(sender))
+                }
+                Notice::GroupMemberBan(n) => {
+                    let contact = Contact {
+                        scene: Scene::Group.into(),
+                        peer: n.group_id.to_string(),
+                        sub_peer: None,
+                    };
+                    let sender = Sender {
+                        uid: n.target_uid.clone(),
+                        uin: Some(n.target_uin),
+                        nick: None,
+                    };
+                    (Some(contact), Some(sender))
+                }
+                Notice::GroupSignIn(n) => {
+                    let contact = Contact {
+                        scene: Scene::Group.into(),
+                        peer: n.group_id.to_string(),
+                        sub_peer: None,
+                    };
+                    let sender = Sender {
+                        uid: n.target_uid.clone(),
+                        uin: Some(n.target_uin),
+                        nick: None,
+                    };
+                    (Some(contact), Some(sender))
+                }
+                Notice::GroupWholeBan(n) => {
+                    let contact = Contact {
+                        scene: Scene::Group.into(),
+                        peer: n.group_id.to_string(),
+                        sub_peer: None,
+                    };
+                    let sender = Sender {
+                        uid: n.operator_uid.clone(),
+                        uin: Some(n.operator_uin),
+                        nick: None,
+                    };
+                    (Some(contact), Some(sender))
+                }
+                Notice::GroupFileUploaded(n) => {
+                    let contact = Contact {
+                        scene: Scene::Group.into(),
+                        peer: n.group_id.to_string(),
+                        sub_peer: None,
+                    };
+                    let sender = Sender {
+                        uid: n.operator_uid.clone(),
+                        uin: Some(n.operator_uin),
+                        nick: None,
+                    };
+                    (Some(contact), Some(sender))
+                }
+            }
+        }
+    }
+}
 
 #[macro_export]
 macro_rules! text {

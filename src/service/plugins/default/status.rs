@@ -13,11 +13,11 @@ use sysinfo::{CpuRefreshKind, Disks, Networks, Pid, RefreshKind, System};
 
 use avocado_common::Event;
 use avocado_macro::service;
+
+use crate::image;
 use crate::service::service::Elements;
-use crate::{image, text};
-use crate::kritor::server::kritor_proto::common::Scene;
 use crate::service::service::{KritorContext, Service};
-use crate::utils::common::{bytes_to_readable_string};
+use crate::utils::common::bytes_to_readable_string;
 use crate::utils::common::memory::get_current_memory_usage;
 use crate::utils::image::{DEFAULT_NORMAL_FONT, draw_filled_rect_with_circle_corner, get_text_size, overlay_image, overlay_image_from_url, OverlayImageOption, render_text_with_different_fonts};
 use crate::utils::time::{format_duration, now_format};

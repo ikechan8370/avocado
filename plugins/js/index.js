@@ -1,18 +1,23 @@
-import { Event } from 'def'
+// import { Event } from 'def'
 /**
  * event
- * @type {Event}
+ * @type {import('def').Event}
  */
 global.e = {}
 
 /**
- * @type {Logger}
+ * @type {import('def').Logger}
  */
 global.logger = {};
 /**
  *
- * @type {CheckFunction}
+ * @type {import('def').CheckFunction}
  */
 global.check = (a, b) => {
     return a.test(b)
 }
+/**
+ *
+ * @type {import('def').AvocadoBot}
+ */
+global.Bot = {}
