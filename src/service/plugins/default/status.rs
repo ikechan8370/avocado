@@ -90,10 +90,10 @@ async fn draw(context: &KritorContext) -> Vec<u8> {
     let duration_str = format_duration(duration).unwrap_or("刚刚启动".to_string());
 
     let version = bot.get_kritor_version().unwrap_or("未知".to_string());
-    let groups =  bot.get_groups();
+    let groups =  bot.get_groups_arc();
     let groups = groups.read().await;
     let group_num = groups.as_ref().unwrap().len();
-    let friends = bot.get_friends();
+    let friends = bot.get_friends_arc();
     let friends = friends.read().await;
     let friend_num = friends.as_ref().unwrap().len();
     let sent = bot.get_sent();

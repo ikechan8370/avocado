@@ -14,6 +14,15 @@ pub struct Group {
     pub members: HashMap<u64, GroupMemberInfo>,
 }
 
+impl Default for Group {
+    fn default() -> Self {
+        Self {
+            inner: GroupInfo::default(),
+            members: HashMap::new(),
+        }
+    }
+}
+
 impl Group {
     pub fn new(inner: GroupInfo, members: HashMap<u64, GroupMemberInfo>) -> Self {
         Self {

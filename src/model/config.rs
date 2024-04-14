@@ -33,20 +33,29 @@ pub const CONFIG_PATH: &'static str = "config/config.toml";
 fn read_toml_config() -> Result<Config> {
     let mut content = String::new();
     fs::File::open(CONFIG_PATH)?.read_to_string(&mut content)?;
-    let config: Config = toml::from_str(&content)?;
-    Ok(config)
+    let parse_result = toml::from_str(&content);
+    match parse_result {
+        Ok(config) => Ok(config),
+        Err(e) => {
+            error!("Failed to parse config: {}", e);
+            Err(e.into())
+        }
+    }
 }
 
-pub static GLOBAL_CONFIG: Lazy<Arc<RwLock<Config>>> = Lazy::new(|| Arc::new(RwLock::new(read_toml_config().unwrap())));
+pub static GLOBAL_CONFIG: Lazy<Arc<RwLock<Config>>> = Lazy::new(|| Arc::new(RwLock::new(read_toml_config().unwrap_or_default())));
 
 pub fn notify_config_change() {
     tokio::spawn(async move {
-        let (mut tx, mut rx) = tokio::sync::mpsc::channel(1);
+        let (tx, mut rx) = tokio::sync::broadcast::channel(1);
+        let tx_arc = Arc::new(tx);
+
+        let source_tx = Arc::clone(&tx_arc);
         let mut watcher = RecommendedWatcher::new(
             move |res| {
-                futures::executor::block_on(async {
-                    tx.send(res).await.unwrap();
-                })
+                if let Ok(event) = res {
+                    source_tx.send(event).unwrap();
+                }
             },
             notify::Config::default()
                 .with_poll_interval(Duration::from_secs(2))
@@ -63,21 +72,24 @@ pub fn notify_config_change() {
             }
         }
 
-        while let Some(event) = rx.recv().await {
+        let mut rx = tx_arc.subscribe();
+        while let event = rx.recv().await {
             match event {
                 Ok(event) => {
                     debug!("config file changed: {:?}", event);
                     match event.kind {
                         EventKind::Create(_) | EventKind::Modify(_) => {
-                            match read_toml_config() {
-                                Ok(new_config) => {
-                                    let mut config = GLOBAL_CONFIG.write().await;
-                                    *config = new_config;
-                                    info!("Config updated: {:?}", *config);
-                                },
-                                Err(e) => {
-                                    error!("Failed to read new config: {}", e);
-                                },
+                            if event.paths.last().unwrap().ends_with("config.toml") {
+                                match read_toml_config() {
+                                    Ok(new_config) => {
+                                        let mut config = GLOBAL_CONFIG.write().await;
+                                        *config = new_config;
+                                        info!("Config updated: {:?}", *config);
+                                    },
+                                    Err(e) => {
+                                        error!("Failed to read new config: {}", e);
+                                    },
+                                }
                             }
                         }
                         _ => {}
@@ -97,5 +109,5 @@ pub async fn get_config() -> Config {
 
 /// 直接读取本地文件，效率略低
 pub fn get_config_sync() -> Config {
-    read_toml_config().unwrap()
+    read_toml_config().unwrap_or_default()
 }

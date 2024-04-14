@@ -10,7 +10,7 @@ use tokio::sync::RwLock;
 use crate::{client_err, err};
 use crate::bot::bot::Bot;
 use crate::kritor::server::kritor_proto::{EventType, NoticeEvent, RequestEvent, SendMessageResponse};
-use crate::kritor::server::kritor_proto::common::{AtElement, Contact, Element, FileElement, ImageElement, PushMessageBody, ReplyElement, Scene, Sender, TextElement};
+use crate::kritor::server::kritor_proto::common::{AtElement, Contact, Element, FileElement, image_element, ImageElement, PushMessageBody, ReplyElement, Scene, Sender, TextElement, video_element, voice_element};
 use crate::kritor::server::kritor_proto::common::element::{Data, ElementType};
 use crate::kritor::server::kritor_proto::event_structure::Event;
 use crate::kritor::server::kritor_proto::event_structure::Event::{Message};
@@ -159,6 +159,8 @@ pub trait Elements {
     fn get_at_elements(&self) -> Option<Vec<AtElement>>;
 
     fn get_reply_element(&self) -> Option<ReplyElement>;
+
+    fn get_raw_msg(&self) -> String;
 }
 
 impl Elements for Vec<Element> {
@@ -215,6 +217,158 @@ impl Elements for Vec<Element> {
             }
         }).collect();
         (!elements.is_empty()).then_some(elements.get(0).unwrap().clone())
+    }
+
+    fn get_raw_msg(&self) -> String {
+        let mut msg = String::new();
+
+        for ele in self {
+            let r#type = ElementType::try_from(ele.r#type).unwrap();
+            match r#type {
+                ElementType::Text => {
+                    if let Data::Text(text_element) = ele.data.clone().unwrap() {
+                        msg.push_str(&text_element.text);
+                    }
+                }
+                ElementType::At => {
+                    if let Data::At(at_element) = ele.data.clone().unwrap() {
+                        msg.push_str(&format!("[@{}]", at_element.uid));
+                    }
+                }
+                ElementType::Face => {
+                    if let Data::Face(face_element) = ele.data.clone().unwrap() {
+                        msg.push_str(&format!("[表情(id={})]", face_element.id));
+                    }
+                }
+                ElementType::BubbleFace => {
+                    if let Data::BubbleFace(bubble_face_element) = ele.data.clone().unwrap() {
+                        msg.push_str(&format!("[气泡表情(id={})]", bubble_face_element.id));
+                    }
+                }
+                ElementType::Reply => {
+                    if let Data::Reply(reply_element) = ele.data.clone().unwrap() {
+                        msg.push_str(&format!("[回复({})]", reply_element.message_id));
+                    }
+                }
+                ElementType::Image => {
+                    if let Data::Image(image_element) = ele.data.clone().unwrap() {
+                        let data = image_element.data.unwrap();
+                        let image = match data {
+                            image_element::Data::FileUrl(url) => url,
+                            _ => String::default()
+                        };
+                        msg.push_str(&format!("[图片({})]", image));
+                    }
+                }
+                ElementType::Voice => {
+                    if let Data::Voice(voice_element) = ele.data.clone().unwrap() {
+                        let data = voice_element.data.unwrap();
+                        let image = match data {
+                            voice_element::Data::FileUrl(url) => url,
+                            _ => String::default()
+                        };
+                        msg.push_str(&format!("[语音({})]", image));
+                    }
+                }
+                ElementType::Video => {
+                    if let Data::Video(video_element) = ele.data.clone().unwrap() {
+                        let data = video_element.data.unwrap();
+                        let image = match data {
+                            video_element::Data::FileUrl(url) => url,
+                            _ => String::default()
+                        };
+                        msg.push_str(&format!("[视频({})]", image));
+                    }
+                }
+                ElementType::Basketball => {
+                    if let Data::Basketball(basketball_element) = ele.data.clone().unwrap() {
+                        msg.push_str(&format!("[篮球({})]", basketball_element.id));
+                    }
+                }
+                ElementType::Dice => {
+                    if let Data::Dice(dice_element) = ele.data.clone().unwrap() {
+                        msg.push_str(&format!("[骰子({})]", dice_element.id));
+                    }
+                }
+                ElementType::Rps => {
+                    if let Data::Rps(rps_element) = ele.data.clone().unwrap() {
+                        msg.push_str(&format!("[Rps({})]", rps_element.id));
+                    }
+                }
+                ElementType::Poke => {
+                    if let Data::Poke(poke_element) = ele.data.clone().unwrap() {
+                        msg.push_str(&format!("[戳一戳({})]", poke_element.id));
+                    }
+                }
+                ElementType::Music => {
+                    if let Data::Music(music_element) = ele.data.clone().unwrap() {
+                        msg.push_str(&format!("[音乐({:?})]", music_element));
+                    }
+                }
+                ElementType::Weather => {
+                    if let Data::Weather(weather_element) = ele.data.clone().unwrap() {
+                        msg.push_str(&format!("[天气({:?})]", weather_element));
+                    }
+                }
+                ElementType::Location => {
+                    if let Data::Location(_location_element) = ele.data.clone().unwrap() {
+                        msg.push_str(&"[位置]".to_string());
+                    }
+                }
+                ElementType::Share => {
+                    if let Data::Share(share_element) = ele.data.clone().unwrap() {
+                        msg.push_str(&format!("[分享(title={}, url={})]", share_element.title, share_element.url));
+                    }
+                }
+                ElementType::Gift => {
+                    if let Data::Gift(gift_element) = ele.data.clone().unwrap() {
+                        msg.push_str(&format!("[礼物(qq={}, id={})]", gift_element.qq, gift_element.id));
+                    }
+                }
+                ElementType::MarketFace => {
+                    if let Data::MarketFace(market_face_element) = ele.data.clone().unwrap() {
+                        msg.push_str(&format!("[MarketFace({})]", market_face_element.id));
+                    }
+                }
+                ElementType::Forward => {
+                    if let Data::Forward(forward_element) = ele.data.clone().unwrap() {
+                        // todo forward download
+                        msg.push_str(&format!("[转发(res_id={}, uniseq={}, summary={}, description={})]", forward_element.res_id, forward_element.uniseq, forward_element.summary, forward_element.description));
+                    }
+                }
+                ElementType::Contact => {
+                    if let Data::Contact(contact_element) = ele.data.clone().unwrap() {
+                        msg.push_str(&format!("[名片(scene={}, peer={})]", Scene::try_from(contact_element.scene).unwrap_or_default().as_str_name(), contact_element.peer));;
+                    }
+                }
+                ElementType::Json => {
+                    if let Data::Json(json_element) = ele.data.clone().unwrap() {
+                        msg.push_str(&format!("[Json({})]", json_element.json));
+                    }
+                }
+                ElementType::Xml => {
+                    if let Data::Xml(xml_element) = ele.data.clone().unwrap() {
+                        msg.push_str(&format!("[Xml({})]", xml_element.xml));
+                    }
+                }
+                ElementType::File => {
+                    if let Data::File(file_element) = ele.data.clone().unwrap() {
+                        msg.push_str(&format!("[文件(name={}, url={})]", file_element.name.clone().unwrap_or_default(), file_element.url.clone().unwrap_or_default()));
+                    }
+                }
+                ElementType::Markdown => {
+                    if let Data::Markdown(markdown_element) = ele.data.clone().unwrap() {
+                        msg.push_str(&format!("[Markdown({})]", markdown_element.markdown));
+                    }
+                }
+                ElementType::Keyboard => {
+                    if let Data::Keyboard(keyboard_element) = ele.data.clone().unwrap() {
+                        msg.push_str(&format!("[按钮({:?})]", keyboard_element));
+                    }
+                }
+            }
+        }
+        msg
     }
 }
 

@@ -6,9 +6,11 @@ use tokio::runtime::Runtime;
 use tokio::sync::{Mutex, RwLock};
 use avocado_common::Event;
 use crate::bot::bot::Bot;
+use crate::bot::group::Group;
+use crate::kritor::server::kritor_proto::common::Scene;
 use crate::LOG_INIT;
 use crate::model::config::get_config;
-use crate::service::service::{get_concat_from_event, KritorContext, Service};
+use crate::service::service::{Elements, get_concat_from_event, KritorContext, Service};
 use crate::utils::kritor::same_contact_and_sender;
 
 pub type KritorEvent = crate::kritor::server::kritor_proto::event_structure::Event;
@@ -85,17 +87,67 @@ pub async fn listen_to_events(bot: Arc<RwLock<Bot>>) {
             }
         }
     }
+    // 异步打印日志
     let bot_clone = bot.clone();
     tokio::spawn(async move {
         while let Ok(event) = message_receiver.recv().await {
             debug!("Received event: {:?}", event);
-            let event_arc = Arc::new(KritorEvent::Message(event)); // 将消息体包裹在Arc中
+
+            let event_arc = Arc::new(KritorEvent::Message(event.clone())); // 将消息体包裹在Arc中
             // 使用全局的service处理器，每个bot的消息都会推送到同样的service中
             let handlers = MESSAGE_SERVICES.lock().await;
             {
                 bot_clone.read().await.plus_one_receive();
             }
             dispatch(&handlers, event_arc, bot_clone.clone()).await;
+
+            let bot_clone = bot_clone.clone();
+            tokio::spawn(async move {
+                let bot = bot_clone.read().await;
+                let gl = bot.get_groups().await.unwrap_or_default();
+                let fl = bot.get_friends().await.unwrap_or_default();
+                let scene = Scene::try_from(event.contact.as_ref().unwrap().scene).unwrap();
+                match scene {
+                    Scene::Group => {
+                        let group_id = event.contact.as_ref().cloned().unwrap().peer;
+                        let group_id = group_id.parse().unwrap();
+                        let group = gl.get(&group_id);
+                        let content = event.elements.clone().get_raw_msg();
+                        let sender = event.sender.as_ref().unwrap();
+                        let uin = sender.uin.unwrap_or(0);
+                        let display_uin_or_uid = sender.uin.map(|u| u.to_string()).or_else(|| Some(sender.uid.clone())).unwrap();
+                        match group {
+                            Some(group) => {
+                                let group_name = group.inner.group_name.clone();
+                                let nickname = group.members.get(&uin).cloned().unwrap_or_default().card.clone();
+                                info!("[Group: {}({})] {}({}): {}", group_name, group_id, nickname, display_uin_or_uid, content);
+                            },
+                            None => {
+                                info!("[Group: ({})] ({}): {}", group_id, display_uin_or_uid, content);
+                            }
+                        }
+
+                    }
+                    Scene::Friend => {
+                        let sender = event.sender.as_ref().unwrap();
+                        let friend_id = sender.uin.unwrap_or(0);
+                        let content = event.elements.clone().get_raw_msg();
+                        let display_uin_or_uid = sender.uin.map(|u| u.to_string()).or_else(|| Some(sender.uid.clone())).unwrap();
+                        let friend = fl.get(&friend_id);
+                        match friend {
+                            Some(friend) => {
+                                let nickname = friend.inner.nick.clone();
+                                info!("[Private: {}({})] : {}", nickname, display_uin_or_uid, content);
+                            },
+                            None => {
+                                info!("[Private: ({})]: {}", display_uin_or_uid, content);
+                            }
+                        }
+                    }
+                    _ => info!("[{:?}]", event)
+                }
+            });
+
         }
     });
     let bot_clone = bot.clone();

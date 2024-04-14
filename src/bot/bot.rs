@@ -232,12 +232,22 @@ impl Bot {
         self.receive.fetch_add(delta, std::sync::atomic::Ordering::Relaxed);
     }
 
-    pub fn get_groups(&self) -> Arc<RwLock<Option<HashMap<u64, Group>>>> {
+    pub fn get_groups_arc(&self) -> Arc<RwLock<Option<HashMap<u64, Group>>>> {
         self.groups.clone()
     }
 
-    pub fn get_friends(&self) -> Arc<RwLock<Option<HashMap<u64, Friend>>>> {
+    pub async fn get_groups(&self) -> Option<HashMap<u64, Group>> {
+        let guard = self.groups.read().await;
+        guard.clone()
+    }
+
+    pub fn get_friends_arc(&self) -> Arc<RwLock<Option<HashMap<u64, Friend>>>> {
         self.friends.clone()
+    }
+
+    pub async fn get_friends(&self) -> Option<HashMap<u64, Friend>> {
+        let guard = self.friends.read().await;
+        guard.clone()
     }
 
     /// 对指定的contact停止广播，用于开始trans的情况

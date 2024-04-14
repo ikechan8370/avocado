@@ -11,12 +11,13 @@ use tonic::{transport::Server};
 use crate::kritor::server::{EventListener, ReverseListener};
 use crate::kritor::server::kritor_proto::event_service_server::EventServiceServer;
 use crate::kritor::server::kritor_proto::reverse_service_server::ReverseServiceServer;
-use crate::model::config::notify_config_change;
+use crate::model::config::{get_config_sync, notify_config_change};
 use crate::service::external::javascript::service::register_js_plugins;
 
 pub static LOG_INIT: Lazy<()> = Lazy::new(|| {
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
-
+    let config = get_config_sync();
+    let level = config.log_level.unwrap_or("info".to_string());
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(level.as_str())).init();
 });
 
 #[tokio::main]

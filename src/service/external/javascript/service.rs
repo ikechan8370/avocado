@@ -31,9 +31,9 @@ impl Service for ExternalJsService {
     async fn process(&self, context: KritorContext) {
         let bot_arc = context.bot.clone();
         let bot = bot_arc.read().await;
-        let group = bot.get_groups();
+        let group = bot.get_groups_arc();
         let group = group.read().await;
-        let friends = bot.get_friends();
+        let friends = bot.get_friends_arc();
         let friends = friends.read().await;
 
         let nickname =  bot.get_nickname().await;

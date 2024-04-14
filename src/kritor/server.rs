@@ -75,7 +75,7 @@ impl EventService for EventListener {
         while let Some(event) = receiving_stream.next().await {
             match event {
                 Ok(event) => {
-                    info!("Received event: {:?}", event);
+                    debug!("Received event: {:?}", event);
                     let bot_guard = bot.read().await;
                     match event.event.unwrap() {
                         Event::Message(message) => {
