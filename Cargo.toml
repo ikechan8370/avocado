@@ -38,7 +38,7 @@ base64 = "0.22.0"
 image = "0.25.1"
 zip = "0.6.6"
 unicode-segmentation = "1.7.1"
-sysinfo = "0.30.10"
+sysinfo = { version = "0.30.10", features = ["default"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 boa_engine = { version = "0.18.0", features = ["intl", "intl_bundled"] }

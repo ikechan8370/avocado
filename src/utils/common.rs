@@ -20,15 +20,13 @@ pub fn bytes_to_readable_string(bytes: u64) -> String {
 
 #[cfg(target_os = "windows")]
 pub mod memory {
-
-
-    use crate::err;
-    use crate::model::error::Result;
     use winapi::um::processthreadsapi::OpenProcess;
     use winapi::um::psapi::GetProcessMemoryInfo;
     use winapi::um::psapi::PROCESS_MEMORY_COUNTERS;
     use winapi::um::winnt::PROCESS_QUERY_INFORMATION;
 
+    use crate::err;
+    use crate::model::error::Result;
 
     pub fn get_current_memory_usage(pid: Option<u32>) -> Result<usize>  {
         let pid = pid.unwrap_or(std::process::id());
@@ -62,8 +60,8 @@ pub mod memory {
 
 #[cfg(target_os = "macos")]
 pub mod memory {
-
     use sysinfo::{CpuRefreshKind, Pid, RefreshKind, System};
+
     use crate::model::error::Result;
 
     pub fn get_current_memory_usage(pid: Option<u32>) -> Result<usize> {
@@ -80,24 +78,18 @@ pub mod memory {
 
 #[cfg(target_os = "linux")]
 pub mod memory {
+    use sysinfo::{Pid, ProcessRefreshKind, RefreshKind, System};
 
-    use std::fs;
     use crate::model::error::Result;
-    use std::ptr::null_mut;
-
 
     pub fn get_current_memory_usage(pid: Option<u32>) -> Result<usize> {
         let pid = pid.unwrap_or(std::process::id());
-        let path = format!("/proc/{}/statm", pid);
-        let data = fs::read_to_string(path)?;
-        let pages: usize = data.split_whitespace()
-            .next()
-            .ok_or(std::io::Error::new(std::io::ErrorKind::Other, "Failed to read memory data"))?
-            .parse()
-            .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidData, "Failed to parse memory data"))?;
-        let page_size = sysconf::page::pagesize();
+        let mut sys = System::new_with_specifics(
+            RefreshKind::new().with_processes(ProcessRefreshKind::new().with_memory()),
+        );
 
-        Ok(pages * page_size)
+        let process = sys.process(Pid::from_u32(pid));
+        Ok(process.unwrap().memory() as usize)
     }
 }
 
