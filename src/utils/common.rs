@@ -64,11 +64,10 @@ pub mod memory {
 pub mod memory {
 
     use sysinfo::{CpuRefreshKind, Pid, RefreshKind, System};
+    use crate::model::error::Result;
 
-
-    pub fn get_current_memory_usage(pid: u32) -> Result<usize> {
-
-
+    pub fn get_current_memory_usage(pid: Option<u32>) -> Result<usize> {
+        let pid = pid.unwrap_or(std::process::id());
         let mut sys = System::new();
         sys.refresh_process(Pid::from_u32(pid));
         let self_id = std::process::id();
@@ -83,12 +82,12 @@ pub mod memory {
 pub mod memory {
 
     use std::fs;
+    use crate::model::error::Result;
     use std::ptr::null_mut;
 
 
-    pub fn get_current_memory_usage(pid: u32) -> Result<usize> {
-
-
+    pub fn get_current_memory_usage(pid: Option<u32>) -> Result<usize> {
+        let pid = pid.unwrap_or(std::process::id());
         let path = format!("/proc/{}/statm", pid);
         let data = fs::read_to_string(path)?;
         let pages: usize = data.split_whitespace()
