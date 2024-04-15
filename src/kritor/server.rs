@@ -75,22 +75,25 @@ impl EventService for EventListener {
         while let Some(event) = receiving_stream.next().await {
             match event {
                 Ok(event) => {
-                    debug!("Received event: {:?}", event);
-                    let bot_guard = bot.read().await;
-                    match event.event.unwrap() {
-                        Event::Message(message) => {
-                            let sender = bot_guard.get_message_sender();
-                            let _ = sender.send(message);
+                    let bot = bot.clone();
+                    tokio::spawn(async move {
+                        debug!("Received event: {:?}", event);
+                        let bot_guard = bot.read().await;
+                        match event.event.unwrap() {
+                            Event::Message(message) => {
+                                let sender = bot_guard.get_message_sender();
+                                let _ = sender.send(message);
+                            }
+                            Event::Notice(notice) => {
+                                let sender = bot_guard.get_notice_sender();
+                                let _ = sender.send(notice);
+                            }
+                            Event::Request(request) => {
+                                let sender = bot_guard.get_request_sender();
+                                let _ = sender.send(request);
+                            }
                         }
-                        Event::Notice(notice) => {
-                            let sender = bot_guard.get_notice_sender();
-                            let _ = sender.send(notice);
-                        }
-                        Event::Request(request) => {
-                            let sender = bot_guard.get_request_sender();
-                            let _ = sender.send(request);
-                        }
-                    }
+                    });
                 }
                 Err(err) => {
                     error!("Error: {:?}", err);

@@ -22,6 +22,7 @@ pub static LOG_INIT: Lazy<()> = Lazy::new(|| {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+    console_subscriber::init();
     let addr = "0.0.0.0:7001".parse()?;
     register_js_plugins().await;
     notify_config_change();

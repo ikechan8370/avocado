@@ -307,7 +307,6 @@ fn reply(
     let elements = elements_from_js(msg.clone(), context).unwrap();
     let e = this.as_object().unwrap();
     let contact = e.get(js_string!("contact"), context).unwrap();
-
     let contact = contact.as_object().unwrap().
         downcast_ref::<ContactJsObject>().unwrap().clone();
     let contact: Contact = contact.into();
@@ -317,7 +316,10 @@ fn reply(
         let bots = BOTS.read().await;
         let bot = bots.get(&uid).unwrap();
         let bot_guard = bot.read().await;
-        let response = bot_guard.send_msg(elements, contact.clone()).await.unwrap();
-        Ok(JsObject::from_proto_and_data(None, response).into())
+        let result = bot_guard.send_msg(elements, contact.clone()).await;
+        match result {
+            Ok(response) => Ok(JsObject::from_proto_and_data(None, response).into()),
+            Err(error) => Err(JsError::from_opaque(JsValue::from(js_string!(error.to_string()))))
+        }
     }
 }

@@ -31,12 +31,14 @@ impl Service for ExternalJsService {
     async fn process(&self, context: KritorContext) {
         let bot_arc = context.bot.clone();
         let bot = bot_arc.read().await;
-        let group = bot.get_groups_arc();
-        let group = group.read().await;
-        let friends = bot.get_friends_arc();
-        let friends = friends.read().await;
+        let group = bot.get_groups().await;
+        let friends = bot.get_friends().await;
 
         let nickname =  bot.get_nickname().await;
+        let uin = bot.get_uin().unwrap_or_default();
+        let uid = bot.get_uid().unwrap_or_default();
+
+        drop(bot);
 
         let elements = context.message.as_ref().cloned().map(|message| message.elements);
 
@@ -55,13 +57,18 @@ impl Service for ExternalJsService {
                 (None, None)
             }
         };
-        let mut boa_context = generate_context(&group, &friends, bot.get_uin().unwrap_or_default(), bot.get_uid().unwrap_or_default(),
-                                               nickname.unwrap_or_default(),
-                                               sender, contact,
-                                               elements.unwrap_or_default(), plugin_name.unwrap_or("unknown".to_string()), &context);
+        let path = self.entry_path.clone();
 
-        let source = Source::from_filepath(self.entry_path.as_path()).unwrap();
-        boa_context.eval(source).expect("external javascript plugin execute error");
+        // 不然会被这个eval阻塞到死
+        let blocking_task = tokio::task::spawn_blocking(move || {
+            let mut boa_context = generate_context(&group, &friends, uin, uid,
+                                                   nickname.unwrap_or_default(),
+                                                   sender, contact,
+                                                   elements.unwrap_or_default(), plugin_name.unwrap_or("unknown".to_string()), &context);
+            let source = Source::from_filepath(path.as_path()).unwrap();
+            boa_context.eval(source).expect("external javascript plugin execute error");
+        });
+        blocking_task.await.unwrap();
     }
 }
 

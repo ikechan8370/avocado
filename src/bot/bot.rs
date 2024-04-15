@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::AtomicI32;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use bytes::Bytes;
 use dashmap::DashMap;
 use futures::channel::oneshot;
@@ -130,7 +130,9 @@ impl Bot {
                     async move {
                         let _permit = semaphore_clone.acquire_owned().await.expect("Failed to acquire semaphore");
                         let self_guard = bot_clone.read().await;
-                        let group_members_info = &self_guard.get_group_member_list(group_info.group_id, true).await.expect("Failed to get group member list").group_members_info;
+                        let group_members_info = &self_guard.get_group_member_list(group_info.group_id, true)
+                            .await.expect("Failed to get group member list")
+                            .group_members_info;
                         debug!("group member list: {:?}", group_info.group_id);
                         (group_info.group_id, group_members_info.clone())
                     }
@@ -276,6 +278,11 @@ impl Bot {
     }
 
     pub async fn send_request(&self, request: common::Request) -> crate::model::error::Result<common::Response> {
+        self.send_request_with_timeout(request, None).await
+    }
+
+    pub async fn send_request_with_timeout(&self, request: common::Request, timeout_duration: Option<Duration>) -> crate::model::error::Result<common::Response> {
+        let timeout_duration = timeout_duration.unwrap_or(Duration::from_secs(10));
         let (resp_tx, resp_rx) = oneshot::channel();
         let tx_guard = self.response_listener.clone();
 
@@ -288,13 +295,16 @@ impl Bot {
         }
 
         debug!("Request sent: {:?}", request);
-
-        match resp_rx.await {
-            Ok(response) => {
-                debug!("Response received, cmd: {}, seq: {}", response.cmd, response.seq);
-                Ok(response)
+        let timeout_future = tokio::time::timeout(timeout_duration, resp_rx);
+        match timeout_future.await {
+            Ok(result) => match result {
+                Ok(response) => {
+                    debug!("Response received, cmd: {}, seq: {}", response.cmd, response.seq);
+                    Ok(response)
+                }
+                Err(e) => kritor_err!(format!("Failed to receive response: {}", e)),
             },
-            Err(e) => kritor_err!(format!("Failed to receive response: {}", e)),
+            Err(_) => err!("Timeout occurred while waiting for response: {}", request.cmd),
         }
     }
 
