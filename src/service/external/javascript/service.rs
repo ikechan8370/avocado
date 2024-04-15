@@ -1,20 +1,18 @@
-use std::fs;
-use std::path::PathBuf;
-use std::sync::Arc;
-use async_trait::async_trait;
-use boa_engine::Source;
-use avocado_common::Event;
 use crate::kritor::server::kritor_proto::common::{Contact, Scene};
 use crate::kritor::server::kritor_proto::{event_structure, EventStructure};
 use crate::service::external::javascript::loader::generate_context;
 use crate::service::register::register_service;
 use crate::service::service::{get_concat_from_event, KritorContext, Matchable, Service};
 use crate::utils::kritor::same_contact_and_sender;
-
+use async_trait::async_trait;
+use avocado_common::Event;
+use boa_engine::Source;
+use std::fs;
+use std::path::PathBuf;
+use std::sync::Arc;
 
 struct ExternalJsService {
     entry_path: PathBuf,
-
 }
 
 #[async_trait]
@@ -25,7 +23,6 @@ impl Matchable for ExternalJsService {
     }
 }
 
-
 #[async_trait]
 impl Service for ExternalJsService {
     async fn process(&self, context: KritorContext) {
@@ -34,13 +31,17 @@ impl Service for ExternalJsService {
         let group = bot.get_groups().await;
         let friends = bot.get_friends().await;
 
-        let nickname =  bot.get_nickname().await;
+        let nickname = bot.get_nickname().await;
         let uin = bot.get_uin().unwrap_or_default();
         let uid = bot.get_uid().unwrap_or_default();
 
         drop(bot);
 
-        let elements = context.message.as_ref().cloned().map(|message| message.elements);
+        let elements = context
+            .message
+            .as_ref()
+            .cloned()
+            .map(|message| message.elements);
 
         let plugin_name = {
             let service_name = context.current_service_name.read().await;
@@ -61,12 +62,22 @@ impl Service for ExternalJsService {
 
         // 不然会被这个eval阻塞到死
         let blocking_task = tokio::task::spawn_blocking(move || {
-            let mut boa_context = generate_context(&group, &friends, uin, uid,
-                                                   nickname.unwrap_or_default(),
-                                                   sender, contact,
-                                                   elements.unwrap_or_default(), plugin_name.unwrap_or("unknown".to_string()), &context);
+            let mut boa_context = generate_context(
+                &group,
+                &friends,
+                uin,
+                uid,
+                nickname.unwrap_or_default(),
+                sender,
+                contact,
+                elements.unwrap_or_default(),
+                plugin_name.unwrap_or("unknown".to_string()),
+                &context,
+            );
             let source = Source::from_filepath(path.as_path()).unwrap();
-            boa_context.eval(source).expect("external javascript plugin execute error");
+            boa_context
+                .eval(source)
+                .expect("external javascript plugin execute error");
         });
         blocking_task.await.unwrap();
     }
@@ -78,7 +89,7 @@ pub async fn register_js_plugins() {
     for dir in dirs {
         let dir = dir.unwrap();
         let path = dir.path();
-        if path.is_dir() && !path.ends_with("def"){
+        if path.is_dir() && !path.ends_with("def") {
             // 遍历下面的js文件
             let files = fs::read_dir(path).unwrap();
             for file in files {
@@ -91,9 +102,12 @@ pub async fn register_js_plugins() {
                         entry_path: path.clone(),
                     };
                     let service_arc = Arc::new(service);
-                    register_service(service_arc, vec![Event::Message, Event::Notice, Event::Request], plugin_name.to_string());
-                } );
-
+                    register_service(
+                        service_arc,
+                        vec![Event::Message, Event::Notice, Event::Request],
+                        plugin_name.to_string(),
+                    );
+                });
             }
         }
     }

@@ -11,7 +11,7 @@ impl From<&str> for Event {
             "message" => Self::Message,
             "notice" => Self::Notice,
             "request" => Self::Request,
-            _ => Self::Message
+            _ => Self::Message,
         }
     }
 }

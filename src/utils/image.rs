@@ -1,22 +1,22 @@
-use std::fs::File;
-use std::future::Future;
-use std::io::{BufReader, Cursor, Read};
-use std::pin::Pin;
-use std::sync::Arc;
+use crate::err;
+use crate::model::error::Result;
 use ab_glyph::{Font, FontRef, PxScale, ScaleFont};
 use dashmap::DashMap;
-use image::{Rgba, RgbaImage};
 use image::imageops::FilterType;
+use image::{Rgba, RgbaImage};
 use imageproc::drawing::{draw_filled_circle_mut, draw_filled_rect_mut, draw_text_mut};
 use imageproc::rect::Rect;
 use lazy_static::lazy_static;
 use log::{debug, error};
 use once_cell::sync::Lazy;
+use std::fs::File;
+use std::future::Future;
+use std::io::{BufReader, Cursor, Read};
+use std::pin::Pin;
+use std::sync::Arc;
 use tokio::sync::RwLock;
 use unicode_segmentation::UnicodeSegmentation;
-use crate::model::error::Result;
 use zip::ZipArchive;
-use crate::err;
 
 // 简单的Alpha混合实现
 fn blend(under: &Rgba<u8>, over: &Rgba<u8>) -> Rgba<u8> {
@@ -25,7 +25,8 @@ fn blend(under: &Rgba<u8>, over: &Rgba<u8>) -> Rgba<u8> {
     let alpha_out = alpha_over + alpha_under * (1.0 - alpha_over);
 
     let blend_channel = |under: u8, over: u8| -> u8 {
-        ((over as f32 * alpha_over + under as f32 * alpha_under * (1.0 - alpha_over)) / alpha_out).round() as u8
+        ((over as f32 * alpha_over + under as f32 * alpha_under * (1.0 - alpha_over)) / alpha_out)
+            .round() as u8
     };
 
     Rgba([
@@ -36,8 +37,12 @@ fn blend(under: &Rgba<u8>, over: &Rgba<u8>) -> Rgba<u8> {
     ])
 }
 
-pub fn overlay_image(position: (u32, u32), image: &mut RgbaImage, overlay_img: &RgbaImage, option: OverlayImageOption) -> Result<()> {
-
+pub fn overlay_image(
+    position: (u32, u32),
+    image: &mut RgbaImage,
+    overlay_img: &RgbaImage,
+    option: OverlayImageOption,
+) -> Result<()> {
     let mut overlay_img = overlay_img.clone();
 
     let (mut overlay_width, mut overlay_height) = overlay_img.dimensions();
@@ -49,7 +54,12 @@ pub fn overlay_image(position: (u32, u32), image: &mut RgbaImage, overlay_img: &
         if let Some(resize_y) = option.resize_y {
             overlay_height = resize_y;
         }
-        overlay_img = image::imageops::resize(&overlay_img, overlay_width, overlay_height, option.filter_type);
+        overlay_img = image::imageops::resize(
+            &overlay_img,
+            overlay_width,
+            overlay_height,
+            option.filter_type,
+        );
     });
 
     option.need_crop.then(|| {
@@ -64,7 +74,14 @@ pub fn overlay_image(position: (u32, u32), image: &mut RgbaImage, overlay_img: &
                         if crop_start_y + crop_height > height {
                             overlay_height = height - crop_start_y;
                         }
-                        overlay_img = image::imageops::crop(&mut overlay_img, crop_start_x, crop_start_y, crop_width, crop_height).to_image();
+                        overlay_img = image::imageops::crop(
+                            &mut overlay_img,
+                            crop_start_x,
+                            crop_start_y,
+                            crop_width,
+                            crop_height,
+                        )
+                        .to_image();
                     }
                 }
             }
@@ -76,7 +93,8 @@ pub fn overlay_image(position: (u32, u32), image: &mut RgbaImage, overlay_img: &
     for j in 0..overlay_height {
         for i in 0..overlay_width {
             let pixel = overlay_img.get_pixel(i, j);
-            if pixel[3] != 0 { // 检查Alpha通道，只处理非完全透明的像素
+            if pixel[3] != 0 {
+                // 检查Alpha通道，只处理非完全透明的像素
                 let base_pixel = image.get_pixel(i + x, j + y);
                 let blended_pixel = blend(base_pixel, &pixel);
                 image.put_pixel(i + x, j + y, blended_pixel);
@@ -97,7 +115,7 @@ pub struct OverlayImageOption {
     pub crop_width: Option<u32>,
     pub crop_height: Option<u32>,
     need_resize: bool,
-    need_crop: bool
+    need_crop: bool,
 }
 
 impl OverlayImageOption {
@@ -150,7 +168,8 @@ pub async fn image_from_url(url: String) -> Result<RgbaImage> {
     let bytes = response.bytes().await?;
 
     // 使用`image`库加载和转换图片。
-    let format = image::ImageFormat::from_path(url.as_str()).unwrap_or(image::guess_format(&bytes)?);
+    let format =
+        image::ImageFormat::from_path(url.as_str()).unwrap_or(image::guess_format(&bytes)?);
 
     // 使用Cursor将字节流转换为一个`Read`实例，因为`image::load`需要一个实现了`Read`的输入。
     let cursor = Cursor::new(bytes);
@@ -159,18 +178,29 @@ pub async fn image_from_url(url: String) -> Result<RgbaImage> {
     Ok(img)
 }
 
-pub async fn overlay_image_from_url(position: (u32, u32), image: &mut RgbaImage, overlay_img_url: String, option: OverlayImageOption) -> Result<()> {
+pub async fn overlay_image_from_url(
+    position: (u32, u32),
+    image: &mut RgbaImage,
+    overlay_img_url: String,
+    option: OverlayImageOption,
+) -> Result<()> {
     let overlay_img = image_from_url(overlay_img_url).await?;
     overlay_image(position, image, &overlay_img, option)
 }
 
-pub fn overlay_image_with_pure_color(position: (u32, u32), image: &mut RgbaImage, overlay_img: &RgbaImage, color: Rgba<u8>) {
+pub fn overlay_image_with_pure_color(
+    position: (u32, u32),
+    image: &mut RgbaImage,
+    overlay_img: &RgbaImage,
+    color: Rgba<u8>,
+) {
     let (x, y) = position;
     let (overlay_width, overlay_height) = overlay_img.dimensions();
     for j in 0..overlay_height {
         for i in 0..overlay_width {
             let pixel = overlay_img.get_pixel(i, j);
-            if pixel[3] != 0 { // 检查Alpha通道，只处理非完全透明的像素
+            if pixel[3] != 0 {
+                // 检查Alpha通道，只处理非完全透明的像素
                 let base_pixel = image.get_pixel(i + x, j + y);
                 let blended_pixel = blend(base_pixel, &color);
                 image.put_pixel(i + x, j + y, blended_pixel);
@@ -253,32 +283,58 @@ pub fn get_emoji_png(emoji_name: &str) -> Result<RgbaImage> {
     let image = image::load_from_memory_with_format(&bytes, image::ImageFormat::Png)?;
 
     Ok(image.to_rgba8())
-
 }
 fn wrapper<'a>(name: String) -> Pin<Box<dyn Future<Output = FontRef<'a>> + Send + 'a>> {
     Box::pin(select_font_for_char(name))
 }
 
-pub async fn render_text_with_different_fonts<'a>(image: &mut RgbaImage, color: Rgba<u8>, x: i32, y: i32, font_scale: PxScale, text: String, font_map: Option<FontFn<'a>>) -> Result<()> {
-    let chars = text.as_str().split_word_bounds().map(String::from).collect::<Vec<String>>();
+pub async fn render_text_with_different_fonts<'a>(
+    image: &mut RgbaImage,
+    color: Rgba<u8>,
+    x: i32,
+    y: i32,
+    font_scale: PxScale,
+    text: String,
+    font_map: Option<FontFn<'a>>,
+) -> Result<()> {
+    let chars = text
+        .as_str()
+        .split_word_bounds()
+        .map(String::from)
+        .collect::<Vec<String>>();
     let font_map = font_map.unwrap_or(wrapper);
     let mut cursor_x = x as f32;
     for c in chars {
         if is_emoji(c.clone()).await {
-            get_emoji_png(c.as_str()).and_then(|emoji_img| {
-                overlay_image((cursor_x as u32, y as u32), image, &emoji_img, OverlayImageOption::new().resize(font_scale.x as u32, font_scale.y as u32))?;
-                cursor_x += font_scale.x;
-                Ok(())
-            }).or_else(|e| {
-                error!("Failed to render emoji: {}", e);
-                err!("Failed to render emoji")
-            })?;
+            get_emoji_png(c.as_str())
+                .and_then(|emoji_img| {
+                    overlay_image(
+                        (cursor_x as u32, y as u32),
+                        image,
+                        &emoji_img,
+                        OverlayImageOption::new().resize(font_scale.x as u32, font_scale.y as u32),
+                    )?;
+                    cursor_x += font_scale.x;
+                    Ok(())
+                })
+                .or_else(|e| {
+                    error!("Failed to render emoji: {}", e);
+                    err!("Failed to render emoji")
+                })?;
         } else {
             let font_to_use = font_map(c.clone()).await;
 
             let scaled_font = font_to_use.as_scaled(font_scale);
 
-            draw_text_mut(image, color, cursor_x as i32, y, font_scale, &font_to_use, c.as_str());
+            draw_text_mut(
+                image,
+                color,
+                cursor_x as i32,
+                y,
+                font_scale,
+                &font_to_use,
+                c.as_str(),
+            );
 
             // 根据glyph计算字符的宽度，用于更新cursor_x
             for x in c.chars() {
@@ -290,13 +346,20 @@ pub async fn render_text_with_different_fonts<'a>(image: &mut RgbaImage, color: 
     }
 
     Ok(())
-
 }
 
-pub fn draw_filled_rect_with_circle_corner(image: &mut RgbaImage, rect: Rect, color: Rgba<u8>, radius: u32) {
+pub fn draw_filled_rect_with_circle_corner(
+    image: &mut RgbaImage,
+    rect: Rect,
+    color: Rgba<u8>,
+    radius: u32,
+) {
     let width = rect.width();
     let height = rect.height();
-    assert!(radius * 2 <= height, "Radius is too large for the rectangle");
+    assert!(
+        radius * 2 <= height,
+        "Radius is too large for the rectangle"
+    );
     if radius * 2 > width {
         // 太小就不要圆角了嘛
         draw_filled_rect_mut(image, rect, color);
@@ -306,16 +369,46 @@ pub fn draw_filled_rect_with_circle_corner(image: &mut RgbaImage, rect: Rect, co
     let radius_i32 = radius as i32;
 
     // 绘制交叉矩形
-    draw_filled_rect_mut(image, Rect::at(left + radius_i32, top).of_size(width - radius * 2, height),  color);
-    draw_filled_rect_mut(image, Rect::at(left, top + radius_i32 ).of_size(width, height - radius * 2),  color);
+    draw_filled_rect_mut(
+        image,
+        Rect::at(left + radius_i32, top).of_size(width - radius * 2, height),
+        color,
+    );
+    draw_filled_rect_mut(
+        image,
+        Rect::at(left, top + radius_i32).of_size(width, height - radius * 2),
+        color,
+    );
 
     // 绘制四个圆角
-    draw_filled_circle_mut(image, (left + radius_i32, top + radius as i32), radius_i32, color);
-    draw_filled_circle_mut(image, (left + width as i32 - radius_i32 - 1, top + radius as i32), radius_i32, color);
-    draw_filled_circle_mut(image, (left + radius_i32, top + height as i32 - radius_i32 - 1), radius_i32, color);
-    draw_filled_circle_mut(image, (left + width as i32 - radius_i32 - 1, top + height as i32 - radius_i32 - 1), radius_i32, color);
+    draw_filled_circle_mut(
+        image,
+        (left + radius_i32, top + radius as i32),
+        radius_i32,
+        color,
+    );
+    draw_filled_circle_mut(
+        image,
+        (left + width as i32 - radius_i32 - 1, top + radius as i32),
+        radius_i32,
+        color,
+    );
+    draw_filled_circle_mut(
+        image,
+        (left + radius_i32, top + height as i32 - radius_i32 - 1),
+        radius_i32,
+        color,
+    );
+    draw_filled_circle_mut(
+        image,
+        (
+            left + width as i32 - radius_i32 - 1,
+            top + height as i32 - radius_i32 - 1,
+        ),
+        radius_i32,
+        color,
+    );
 }
-
 
 pub fn get_text_size(font: &FontRef, text: &str, scale: PxScale) -> (f32, f32) {
     let mut content_text_width = 0.;

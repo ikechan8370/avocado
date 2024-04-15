@@ -1,15 +1,17 @@
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
-    use boa_engine::{Context, js_string, JsArgs, JsError, JsObject, JsString, JsValue, NativeFunction, Source};
+    use crate::utils::time::format_duration;
     use boa_engine::builtins::promise::PromiseState;
     use boa_engine::job::NativeJob;
     use boa_engine::object::builtins::{JsPromise, JsRegExp};
     use boa_engine::object::ObjectInitializer;
     use boa_engine::property::Attribute;
-    use crate::utils::time::format_duration;
+    use boa_engine::{
+        js_string, Context, JsArgs, JsError, JsObject, JsString, JsValue, NativeFunction, Source,
+    };
     use boa_runtime::Console;
     use log::{debug, error, info, warn};
+    use std::path::Path;
 
     struct Logger {
         pub debug: NativeFunction,
@@ -43,7 +45,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_boa_call_and_bind() {
-
         fn test(str: String) -> String {
             format!("{}, test", str)
         }
@@ -59,19 +60,26 @@ mod tests {
                 2,
                 NativeFunction::from_copy_closure(move |_this, args, _ctx| {
                     let regex = match args.get(0).unwrap() {
-                        JsValue::String(r) => {
-                            r.to_std_string_escaped()
-                        }
+                        JsValue::String(r) => r.to_std_string_escaped(),
                         JsValue::Object(r) => {
                             let r = JsRegExp::from_object(r.clone()).unwrap();
                             r.to_string(_ctx).unwrap()
                         }
                         _ => {
-                            return Err(JsError::from_opaque(JsValue::from(js_string!("unexpected type for arg regex"))));
+                            return Err(JsError::from_opaque(JsValue::from(js_string!(
+                                "unexpected type for arg regex"
+                            ))));
                         }
                     };
-                    let value = args.get(1).unwrap().as_string().unwrap().to_std_string_escaped();
-                    let result = regex::Regex::new(regex.as_str()).unwrap().is_match(value.as_str());
+                    let value = args
+                        .get(1)
+                        .unwrap()
+                        .as_string()
+                        .unwrap()
+                        .to_std_string_escaped();
+                    let result = regex::Regex::new(regex.as_str())
+                        .unwrap()
+                        .is_match(value.as_str());
                     Ok(JsValue::from(result))
                 }),
             )
@@ -85,7 +93,9 @@ mod tests {
             .function(logger.error, js_string!("error"), 1)
             .build();
 
-        context.register_global_property(js_string!("logger"), object, Attribute::all()).unwrap();
+        context
+            .register_global_property(js_string!("logger"), object, Attribute::all())
+            .unwrap();
 
         context
             .register_global_callable(

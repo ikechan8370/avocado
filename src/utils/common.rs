@@ -1,4 +1,3 @@
-
 pub fn bytes_to_readable_string(bytes: u64) -> String {
     let kilobytes = 1024.0;
     let megabytes = kilobytes * 1024.0;
@@ -28,7 +27,7 @@ pub mod memory {
     use crate::err;
     use crate::model::error::Result;
 
-    pub fn get_current_memory_usage(pid: Option<u32>) -> Result<usize>  {
+    pub fn get_current_memory_usage(pid: Option<u32>) -> Result<usize> {
         let pid = pid.unwrap_or(std::process::id());
         unsafe {
             let process = OpenProcess(PROCESS_QUERY_INFORMATION, 0, pid);
@@ -92,4 +91,3 @@ pub mod memory {
         Ok(process.unwrap().memory() as usize)
     }
 }
-

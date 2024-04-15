@@ -1,26 +1,26 @@
-use std::collections::HashMap;
-use std::sync::Arc;
-use std::sync::atomic::AtomicI32;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use crate::bot::core::CoreAPITrait;
+use crate::bot::friend::{Friend, FriendAPITrait};
+use crate::bot::group::{Group, GroupAPITrait};
+use crate::kritor::server::kritor_proto::common::{Contact, Element};
+use crate::kritor::server::kritor_proto::*;
+use crate::service::service::KritorContext;
+use crate::utils::kritor::same_contact_and_sender;
+use crate::{err, kritor_err};
 use bytes::Bytes;
 use dashmap::DashMap;
 use futures::channel::oneshot;
-use futures::StreamExt;
 use futures::stream::FuturesUnordered;
+use futures::StreamExt;
 use log::{debug, error, info};
 use prost::Message;
 use rand::Rng;
-use tokio::sync::{broadcast, RwLock, Semaphore};
+use std::collections::HashMap;
+use std::sync::atomic::AtomicI32;
+use std::sync::Arc;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc::Sender;
+use tokio::sync::{broadcast, RwLock, Semaphore};
 use tonic::Status;
-use crate::bot::friend::{Friend, FriendAPITrait};
-use crate::bot::group::{Group, GroupAPITrait};
-use crate::kritor::server::kritor_proto::*;
-use crate::{err, kritor_err};
-use crate::bot::core::CoreAPITrait;
-use crate::kritor::server::kritor_proto::common::{Contact, Element};
-use crate::service::service::KritorContext;
-use crate::utils::kritor::same_contact_and_sender;
 
 #[derive(Debug)]
 pub struct Bot {
@@ -48,7 +48,12 @@ pub struct Bot {
 }
 
 impl Bot {
-    pub fn new(uin: u64, uid: String, tx_mutex: Arc<Option<Sender<Result<common::Request, Status>>>>, version: Option<String>) -> Self {
+    pub fn new(
+        uin: u64,
+        uid: String,
+        tx_mutex: Arc<Option<Sender<Result<common::Request, Status>>>>,
+        version: Option<String>,
+    ) -> Self {
         info!("Bot is created: uin: {}, uid: {}", uin, uid);
         let (msender, _mreceiver) = broadcast::channel(100);
         let (nsender, _nreceiver) = broadcast::channel(100);
@@ -68,7 +73,10 @@ impl Bot {
             client_version: Arc::new(RwLock::new(None)),
             kritor_version: version,
 
-            up_time: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
+            up_time: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
             sent: AtomicI32::new(0),
             receive: AtomicI32::new(0),
 
@@ -86,9 +94,20 @@ impl Bot {
             // let version = self_guard.get_version().await.expect("Failed to get version");
             // self_guard.client_version.write().await.replace(version.clone().app_name);
             // info!("Client version: {}", version.app_name);
-            self_guard.client_version.write().await.replace("Android QQ".to_string());
-            let current = self_guard.get_current_account().await.expect("Failed to get nickname");
-            self_guard.nickname.write().await.replace(current.account_name.clone());
+            self_guard
+                .client_version
+                .write()
+                .await
+                .replace("Android QQ".to_string());
+            let current = self_guard
+                .get_current_account()
+                .await
+                .expect("Failed to get nickname");
+            self_guard
+                .nickname
+                .write()
+                .await
+                .replace(current.account_name.clone());
             info!("Welcome Nickname: {}", current.account_name);
         }
 
@@ -101,13 +120,18 @@ impl Bot {
                 let info = friends_response.friends_info.clone();
                 let friend_num = info.len();
                 info!("Friends count: {}", friend_num);
-                let friends = info.into_iter().map(|info| {
-                    let friend = Friend::new(info);
-                    (friend.inner.uin, friend)
-                }).collect::<HashMap<u64, Friend>>();
+                let friends = info
+                    .into_iter()
+                    .map(|info| {
+                        let friend = Friend::new(info);
+                        (friend.inner.uin, friend)
+                    })
+                    .collect::<HashMap<u64, Friend>>();
                 let self_guard = self_arc.write().await;
                 let mut final_friends = self_guard.friends.write().await;
-                final_friends.get_or_insert_with(HashMap::new).extend(friends);
+                final_friends
+                    .get_or_insert_with(HashMap::new)
+                    .extend(friends);
             }
             Err(err) => {
                 error!("Failed to initialize friends: {:?}", err.error());
@@ -124,19 +148,29 @@ impl Bot {
                 debug!("group list: {:?}", groups);
                 let semaphore = Arc::new(Semaphore::new(max_concurrent));
                 debug!("Start to get group member list");
-                let tasks = groups.groups_info.clone().into_iter().map(|group_info| {
-                    let semaphore_clone = semaphore.clone();
-                    let bot_clone = self_arc.clone();
-                    async move {
-                        let _permit = semaphore_clone.acquire_owned().await.expect("Failed to acquire semaphore");
-                        let self_guard = bot_clone.read().await;
-                        let group_members_info = &self_guard.get_group_member_list(group_info.group_id, true)
-                            .await.expect("Failed to get group member list")
-                            .group_members_info;
-                        debug!("group member list: {:?}", group_info.group_id);
-                        (group_info.group_id, group_members_info.clone())
-                    }
-                }).collect::<FuturesUnordered<_>>(); // 使用 FuturesUnordered 来处理并发
+                let tasks = groups
+                    .groups_info
+                    .clone()
+                    .into_iter()
+                    .map(|group_info| {
+                        let semaphore_clone = semaphore.clone();
+                        let bot_clone = self_arc.clone();
+                        async move {
+                            let _permit = semaphore_clone
+                                .acquire_owned()
+                                .await
+                                .expect("Failed to acquire semaphore");
+                            let self_guard = bot_clone.read().await;
+                            let group_members_info = &self_guard
+                                .get_group_member_list(group_info.group_id, true)
+                                .await
+                                .expect("Failed to get group member list")
+                                .group_members_info;
+                            debug!("group member list: {:?}", group_info.group_id);
+                            (group_info.group_id, group_members_info.clone())
+                        }
+                    })
+                    .collect::<FuturesUnordered<_>>(); // 使用 FuturesUnordered 来处理并发
                 let results: HashMap<u64, Vec<GroupMemberInfo>> = tasks.collect().await;
 
                 debug!("prepare to update bot");
@@ -144,19 +178,23 @@ impl Bot {
                 let mut final_groups = self_guard.groups.write().await;
                 for group_info in &groups.groups_info {
                     let group_id = group_info.group_id;
-                    let group_members_info = results.get(&group_id).expect("Failed to get group members info");
-                    let group_members_map = group_members_info.iter().map(|member_info| {
-                        (member_info.uin, member_info.clone())
-                    }).collect::<HashMap<u64, GroupMemberInfo>>();
+                    let group_members_info = results
+                        .get(&group_id)
+                        .expect("Failed to get group members info");
+                    let group_members_map = group_members_info
+                        .iter()
+                        .map(|member_info| (member_info.uin, member_info.clone()))
+                        .collect::<HashMap<u64, GroupMemberInfo>>();
                     let group = Group::new(group_info.clone(), group_members_map);
-                    final_groups.get_or_insert_with(HashMap::new).insert(group_id, group);
+                    final_groups
+                        .get_or_insert_with(HashMap::new)
+                        .insert(group_id, group);
                 }
             }
             Err(err) => {
                 error!("Failed to initialize groups: {:?}", err.error());
             }
         };
-
 
         info!("Bot initialized");
     }
@@ -220,7 +258,8 @@ impl Bot {
     }
 
     pub fn plus_sent(&self, delta: i32) {
-        self.sent.fetch_add(delta, std::sync::atomic::Ordering::Relaxed);
+        self.sent
+            .fetch_add(delta, std::sync::atomic::Ordering::Relaxed);
     }
     pub fn get_receive(&self) -> i32 {
         self.receive.load(std::sync::atomic::Ordering::Relaxed)
@@ -231,7 +270,8 @@ impl Bot {
     }
 
     pub fn plus_receive(&self, delta: i32) {
-        self.receive.fetch_add(delta, std::sync::atomic::Ordering::Relaxed);
+        self.receive
+            .fetch_add(delta, std::sync::atomic::Ordering::Relaxed);
     }
 
     pub fn get_groups_arc(&self) -> Arc<RwLock<Option<HashMap<u64, Group>>>> {
@@ -253,7 +293,12 @@ impl Bot {
     }
 
     /// 对指定的contact停止广播，用于开始trans的情况
-    pub async fn stop_broadcast(self_arc: Arc<RwLock<Self>>, context: KritorContext, contact: Contact, sender: common::Sender) -> crate::model::error::Result<()> {
+    pub async fn stop_broadcast(
+        self_arc: Arc<RwLock<Self>>,
+        context: KritorContext,
+        contact: Contact,
+        sender: common::Sender,
+    ) -> crate::model::error::Result<()> {
         {
             let self_guard = self_arc.read().await;
             let mut lock = self_guard.transaction_contexts.write().await;
@@ -263,25 +308,40 @@ impl Bot {
     }
 
     /// 恢复对指定contact的广播
-    pub async fn resume_broadcast(self_arc: Arc<RwLock<Self>>, contact: Contact, sender: common::Sender) -> crate::model::error::Result<()> {
+    pub async fn resume_broadcast(
+        self_arc: Arc<RwLock<Self>>,
+        contact: Contact,
+        sender: common::Sender,
+    ) -> crate::model::error::Result<()> {
         let self_guard = self_arc.read().await;
         let mut lock = self_guard.transaction_contexts.write().await;
         // let (context, c) = lock.clone().iter().find(|(ctx, c)| c == &contact).ok_or_else(|| client_err!("Transaction is not locked"))?;
         // 恢复到该contact的广播
-        lock.clone().iter().position(|(ctx, c, s)| same_contact_and_sender((&contact, &sender), (c, s))).map(|pos| lock.remove(pos));
+        lock.clone()
+            .iter()
+            .position(|(ctx, c, s)| same_contact_and_sender((&contact, &sender), (c, s)))
+            .map(|pos| lock.remove(pos));
         Ok(())
     }
 
-
-    pub async fn get_broadcast_lock(&self) -> Arc<RwLock<Vec<(KritorContext, Contact, common::Sender)>>> {
+    pub async fn get_broadcast_lock(
+        &self,
+    ) -> Arc<RwLock<Vec<(KritorContext, Contact, common::Sender)>>> {
         self.transaction_contexts.clone()
     }
 
-    pub async fn send_request(&self, request: common::Request) -> crate::model::error::Result<common::Response> {
+    pub async fn send_request(
+        &self,
+        request: common::Request,
+    ) -> crate::model::error::Result<common::Response> {
         self.send_request_with_timeout(request, None).await
     }
 
-    pub async fn send_request_with_timeout(&self, request: common::Request, timeout_duration: Option<Duration>) -> crate::model::error::Result<common::Response> {
+    pub async fn send_request_with_timeout(
+        &self,
+        request: common::Request,
+        timeout_duration: Option<Duration>,
+    ) -> crate::model::error::Result<common::Response> {
         let timeout_duration = timeout_duration.unwrap_or(Duration::from_secs(10));
         let (resp_tx, resp_rx) = oneshot::channel();
         let tx_guard = self.response_listener.clone();
@@ -289,7 +349,9 @@ impl Bot {
         if let Some(tx) = tx_guard.as_ref() {
             let request_queue = self.request_queue.clone();
             request_queue.insert(request.seq, resp_tx);
-            tx.send(Ok(request.clone())).await.expect("Failed to send request");
+            tx.send(Ok(request.clone()))
+                .await
+                .expect("Failed to send request");
         } else {
             return err!("Connection not established");
         }
@@ -299,17 +361,26 @@ impl Bot {
         match timeout_future.await {
             Ok(result) => match result {
                 Ok(response) => {
-                    debug!("Response received, cmd: {}, seq: {}", response.cmd, response.seq);
+                    debug!(
+                        "Response received, cmd: {}, seq: {}",
+                        response.cmd, response.seq
+                    );
                     Ok(response)
                 }
                 Err(e) => kritor_err!(format!("Failed to receive response: {}", e)),
             },
-            Err(_) => err!("Timeout occurred while waiting for response: {}", request.cmd),
+            Err(_) => err!(
+                "Timeout occurred while waiting for response: {}",
+                request.cmd
+            ),
         }
     }
 
-
-    pub async fn send_msg(&self, segments: Vec<Element>, contact: Contact) -> crate::model::error::Result<SendMessageResponse> {
+    pub async fn send_msg(
+        &self,
+        segments: Vec<Element>,
+        contact: Contact,
+    ) -> crate::model::error::Result<SendMessageResponse> {
         let msg = SendMessageRequest {
             contact: Some(contact),
             elements: segments,
@@ -318,12 +389,15 @@ impl Bot {
             notice_id: None,
             request_id: None,
         };
-        let response = self.send_request(common::Request {
-            cmd: "MessageService.SendMessage".to_string(),
-            seq: get_seq(),
-            buf: msg.encode_to_vec(),
-            no_response: false,
-        }).await.expect("send error");
+        let response = self
+            .send_request(common::Request {
+                cmd: "MessageService.SendMessage".to_string(),
+                seq: get_seq(),
+                buf: msg.encode_to_vec(),
+                no_response: false,
+            })
+            .await
+            .expect("send error");
         let buf: Bytes = response.buf.clone().into();
         let response = SendMessageResponse::decode(buf).unwrap();
         self.plus_one_sent();

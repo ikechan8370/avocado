@@ -1,7 +1,7 @@
 use proc_macro::TokenStream;
 
 use quote::quote;
-use syn::{ItemStruct, LitStr, parse_macro_input, Path};
+use syn::{parse_macro_input, ItemStruct, LitStr, Path};
 
 // 定义一个属性宏
 #[proc_macro_attribute]
@@ -35,7 +35,7 @@ pub fn service(args: TokenStream, input: TokenStream) -> TokenStream {
     let events_tokens = quote! { vec![#(#events),*] };
     if regex.is_some() {
         let regex = regex.unwrap().value();
-        let expanded  = quote! {
+        let expanded = quote! {
             #input_parsed
 
             #[async_trait]
@@ -61,10 +61,10 @@ pub fn service(args: TokenStream, input: TokenStream) -> TokenStream {
                 crate::service::register::register_service(service, events, name);
             }
         };
-        return TokenStream::from(expanded)
+        return TokenStream::from(expanded);
     }
 
-    let expanded  = quote! {
+    let expanded = quote! {
         #input_parsed
 
         use ctor::ctor;

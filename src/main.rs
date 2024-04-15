@@ -1,23 +1,24 @@
-mod kritor;
-mod service;
-mod model;
 mod bot;
-mod utils;
+mod kritor;
+mod model;
+mod service;
 mod test;
+mod utils;
 
-use std::error::Error;
-use once_cell::sync::Lazy;
-use tonic::{transport::Server};
-use crate::kritor::server::{EventListener, ReverseListener};
 use crate::kritor::server::kritor_proto::event_service_server::EventServiceServer;
 use crate::kritor::server::kritor_proto::reverse_service_server::ReverseServiceServer;
+use crate::kritor::server::{EventListener, ReverseListener};
 use crate::model::config::{get_config_sync, notify_config_change};
 use crate::service::external::javascript::service::register_js_plugins;
+use once_cell::sync::Lazy;
+use std::error::Error;
+use tonic::transport::Server;
 
 pub static LOG_INIT: Lazy<()> = Lazy::new(|| {
     let config = get_config_sync();
     let level = config.log_level.unwrap_or("info".to_string());
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(level.as_str())).init();
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(level.as_str()))
+        .init();
 });
 
 #[tokio::main]
@@ -35,4 +36,3 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .await?;
     Ok(())
 }
-

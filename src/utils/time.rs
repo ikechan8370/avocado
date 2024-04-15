@@ -1,8 +1,7 @@
 use crate::model::error::Result;
-use chrono::{Local, Datelike, Timelike, Weekday};
+use chrono::{Datelike, Local, Timelike, Weekday};
 
 pub fn format_duration(duration: u64) -> Result<String> {
-
     let mut duration_str = String::new();
     let days = duration / 86400;
     if days > 0 {

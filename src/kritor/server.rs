@@ -1,21 +1,21 @@
+use crate::bot::bot::Bot;
+use crate::kritor::server::kritor_proto::event_structure::Event;
+use crate::service::register::listen_to_events;
+use dashmap::DashMap;
+use kritor_proto::event_service_server::EventService;
+use kritor_proto::reverse_service_server::ReverseService;
+use kritor_proto::{common, EventStructure, RequestPushEvent};
+use log::{debug, error, info, warn};
+use once_cell::sync::Lazy;
 use std::error::Error;
 use std::io::ErrorKind;
 use std::pin::Pin;
 use std::sync::Arc;
-use dashmap::DashMap;
-use log::{debug, error, info, warn};
 use tokio::sync::{mpsc, Notify, RwLock};
+use tokio_stream::wrappers::ReceiverStream;
 use tokio_stream::Stream;
 use tokio_stream::StreamExt;
-use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status, Streaming};
-use kritor_proto::event_service_server::EventService;
-use kritor_proto::{common, EventStructure, RequestPushEvent};
-use kritor_proto::reverse_service_server::ReverseService;
-use once_cell::sync::Lazy;
-use crate::bot::bot::Bot;
-use crate::kritor::server::kritor_proto::event_structure::Event;
-use crate::service::register::listen_to_events;
 
 pub mod kritor_proto {
     tonic::include_proto!("kritor.event");
@@ -38,7 +38,8 @@ pub mod kritor_proto {
 
 static NOTIFY: Notify = Notify::const_new();
 
-pub static BOTS: Lazy<Arc<RwLock<DashMap<String, Arc<RwLock<Bot>>>>>> = Lazy::new(|| Arc::new(RwLock::new(DashMap::new())));
+pub static BOTS: Lazy<Arc<RwLock<DashMap<String, Arc<RwLock<Bot>>>>>> =
+    Lazy::new(|| Arc::new(RwLock::new(DashMap::new())));
 
 #[derive(Debug, Default)]
 pub struct EventListener {}
@@ -49,14 +50,26 @@ type ResponseStream = Pin<Box<dyn Stream<Item = Result<EventStructure, Status>> 
 impl EventService for EventListener {
     type RegisterActiveListenerStream = ResponseStream;
 
-    async fn register_active_listener(&self, _request: Request<RequestPushEvent>) -> Result<Response<Self::RegisterActiveListenerStream>, Status> {
+    async fn register_active_listener(
+        &self,
+        _request: Request<RequestPushEvent>,
+    ) -> Result<Response<Self::RegisterActiveListenerStream>, Status> {
         Err(Status::unimplemented("Not implemented"))
     }
 
-    async fn register_passive_listener(&self, request: Request<Streaming<EventStructure>>) -> Result<Response<RequestPushEvent>, Status> {
+    async fn register_passive_listener(
+        &self,
+        request: Request<Streaming<EventStructure>>,
+    ) -> Result<Response<RequestPushEvent>, Status> {
         debug!("Received passive listener registration");
         debug!("Request: {:?}", request.metadata());
-        let uid = request.metadata().get("kritor-self-uid").unwrap().to_str().unwrap().to_string();
+        let uid = request
+            .metadata()
+            .get("kritor-self-uid")
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string();
         // wait until bot is created through reverse stream
         loop {
             if BOTS.read().await.contains_key(&uid) {
@@ -101,9 +114,7 @@ impl EventService for EventListener {
             }
         }
         info!("Stream ended");
-        return Ok(Response::new(RequestPushEvent {
-            r#type: 0,
-        }));
+        return Ok(Response::new(RequestPushEvent { r#type: 0 }));
     }
 }
 
@@ -116,13 +127,33 @@ type ReverseResponseStream = Pin<Box<dyn Stream<Item = Result<common::Request, S
 impl ReverseService for ReverseListener {
     type ReverseStreamStream = ReverseResponseStream;
 
-    async fn reverse_stream(&self, request: Request<Streaming<common::Response>>) -> Result<Response<Self::ReverseStreamStream>, Status> {
+    async fn reverse_stream(
+        &self,
+        request: Request<Streaming<common::Response>>,
+    ) -> Result<Response<Self::ReverseStreamStream>, Status> {
         debug!("Received reverse stream");
         debug!("Request: {:?}", request.metadata());
         let (tx, rx) = mpsc::channel(4096);
-        let uid = request.metadata().get("kritor-self-uid").unwrap().to_str().unwrap().to_string();
-        let version = request.metadata().get("kritor-self-version").map(|m| m.to_str().unwrap().to_string());
-        let uin = request.metadata().get("kritor-self-uin").unwrap().to_str().unwrap().to_string().parse().unwrap_or(0);
+        let uid = request
+            .metadata()
+            .get("kritor-self-uid")
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string();
+        let version = request
+            .metadata()
+            .get("kritor-self-version")
+            .map(|m| m.to_str().unwrap().to_string());
+        let uin = request
+            .metadata()
+            .get("kritor-self-uin")
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string()
+            .parse()
+            .unwrap_or(0);
         // wait until bot is created
         {
             let bots = BOTS.write().await;
@@ -157,7 +188,7 @@ impl ReverseService for ReverseListener {
                                 warn!("unknown response: cmd: {}, seq: {}", v.cmd, v.seq);
                             }
                         });
-                    },
+                    }
                     Err(err) => {
                         if let Some(io_err) = match_for_io_error(&err) {
                             if io_err.kind() == ErrorKind::BrokenPipe {
@@ -183,7 +214,6 @@ impl ReverseService for ReverseListener {
         ))
     }
 }
-
 
 fn match_for_io_error(err_status: &Status) -> Option<&std::io::Error> {
     let mut err: &(dyn Error + 'static) = err_status;

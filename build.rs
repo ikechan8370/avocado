@@ -20,13 +20,13 @@ fn collect_proto_files<P: AsRef<Path>>(dir: P) -> Vec<PathBuf> {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-
     println!("cargo:rerun-if-changed=kritor/protos");
     println!("cargo:rerun-if-changed=src/service/plugins");
 
     let proto_files = collect_proto_files("kritor/protos");
 
-    let proto_files_str = proto_files.iter()
+    let proto_files_str = proto_files
+        .iter()
         .map(|path| path.to_str().unwrap_or(""))
         .collect::<Vec<_>>();
     // let proto_dirs: Vec<PathBuf> = fs::read_dir("kritor/protos").unwrap().map(|d| d.unwrap().path()).collect();
@@ -98,7 +98,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "kritor.friend.FriendInfo",
         "kritor.friend.ProfileCard",
         "kritor.friend.ExtInfo",
-
         // "kritor.common.PushMessageBody",
         // "kritor.common.ForwardMessageBody",
         "kritor.common.EssenceMessageBody",
@@ -137,7 +136,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "kritor.common.Sender",
         "kritor.common.Scene",
         "kritor.common.Response",
-
         // "kritor.event.NoticeEvent",
         "kritor.event.FriendPokeNotice",
         "kritor.event.FriendRecallNotice",
@@ -154,17 +152,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "kritor.event.GroupSignInNotice",
         "kritor.event.GroupWholeBanNotice",
         "kritor.event.GroupFileUploadedNotice",
-
         // "kritor.event.RequestEvent",
         "kritor.event.FriendApplyRequest",
         "kritor.event.GroupApplyRequest",
         "kritor.event.InvitedJoinGroupRequest",
-
         "kritor.web.GetCredentialsResponse",
         "kritor.web.GetCSRFTokenResponse",
         "kritor.web.GetHttpCookiesResponse",
         "kritor.web.GetCookiesResponse",
-
         "kritor.message.SendMessageResponse",
         "kritor.message.SendMessageByResIdResponse",
         // "kritor.message.GetMessageResponse",
@@ -174,10 +169,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "kritor.message.UploadForwardMessageResponse",
         // "kritor.message.DownloadForwardMessageResponse",
         "kritor.message.GetEssenceMessageListResponse",
-
     ];
     let config = rust_to_js_message.iter().fold(config, |config, message| {
-        config.message_attribute(message, "#[derive(boa_engine::JsData, boa_engine::Trace, boa_engine::Finalize)]")
+        config.message_attribute(
+            message,
+            "#[derive(boa_engine::JsData, boa_engine::Trace, boa_engine::Finalize)]",
+        )
     });
 
     config
@@ -185,7 +182,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build_server(true)
         // .proto_path("kritor/protos")
         .compile(&proto_files_str, &["kritor/protos"])?;
-
 
     // 加载插件
     let out_dirs = vec!["src/service/plugins", "src/service/plugins/default"];

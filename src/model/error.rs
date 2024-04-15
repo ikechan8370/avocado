@@ -1,5 +1,5 @@
-use std::fmt::Display;
 use image::ImageError;
+use std::fmt::Display;
 use zip::result::ZipError;
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -15,34 +15,34 @@ pub enum Kind {
     Internal,
     Kritor,
     Client,
-    Network
+    Network,
 }
 
-impl Error{
+impl Error {
     pub fn new(msg: String) -> Self {
         Error {
             msg,
-            kind: Kind::Internal
+            kind: Kind::Internal,
         }
     }
     pub fn kritor(msg: String) -> Self {
         Error {
             msg,
-            kind: Kind::Kritor
+            kind: Kind::Kritor,
         }
     }
 
     pub fn client(msg: String) -> Self {
         Error {
             msg,
-            kind: Kind::Client
+            kind: Kind::Client,
         }
     }
 
     pub fn network(msg: String) -> Self {
         Error {
             msg,
-            kind: Kind::Network
+            kind: Kind::Network,
         }
     }
     pub fn error(&self) -> String {
@@ -52,7 +52,6 @@ impl Error{
     pub fn kind(&self) -> Kind {
         self.kind.clone()
     }
-
 }
 
 impl Display for Error {
@@ -66,7 +65,7 @@ impl From<tonic::Status> for Error {
         let msg = format!("{}", e);
         Error {
             msg,
-            kind: Kind::Internal
+            kind: Kind::Internal,
         }
     }
 }
@@ -76,7 +75,7 @@ impl From<reqwest::Error> for Error {
         let msg = format!("{}", e);
         Error {
             msg,
-            kind: Kind::Network
+            kind: Kind::Network,
         }
     }
 }
@@ -86,7 +85,7 @@ impl From<ImageError> for Error {
         let msg = format!("{}", e);
         Error {
             msg,
-            kind: Kind::Internal
+            kind: Kind::Internal,
         }
     }
 }
@@ -96,7 +95,7 @@ impl From<ZipError> for Error {
         let msg = format!("{}", value);
         Error {
             msg,
-            kind: Kind::Internal
+            kind: Kind::Internal,
         }
     }
 }
@@ -106,7 +105,7 @@ impl From<toml::de::Error> for Error {
         let msg = format!("{}", e);
         Error {
             msg,
-            kind: Kind::Internal
+            kind: Kind::Internal,
         }
     }
 }
@@ -116,7 +115,7 @@ impl From<std::io::Error> for Error {
         let msg = format!("{}", e);
         Error {
             msg,
-            kind: Kind::Internal
+            kind: Kind::Internal,
         }
     }
 }
