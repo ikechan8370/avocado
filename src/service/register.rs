@@ -101,8 +101,11 @@ pub async fn listen_to_events(bot: Arc<RwLock<Bot>>) {
             }
             // 正常情况，分发给各个服务
             if service_clone.matches(context.clone()) {
+                let service_name = service_name.clone();
                 tokio::spawn(async move {
+                    debug!("Dispatching event to service: {}", service_name);
                     service_clone.process(context).await;
+                    debug!("Service {} finished processing", service_name);
                 });
             }
         }
