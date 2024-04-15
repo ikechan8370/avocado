@@ -368,7 +368,6 @@ async fn draw(context: &KritorContext) -> Vec<u8> {
     current_y += brand_font_size + 20;
 
     if let Some(self_process) = sys.process(Pid::from_u32(self_id)) {
-        self_process.memory()
         let text = format!("🥑  本进程占用 —— CPU {:.1}% 内存 {}", self_process.cpu_usage(), bytes_to_readable_string(current_memory_usage as u64));
         render_text_with_different_fonts(&mut image, color, padding_left_right as i32, current_y, scale, text.to_string(), None).await.unwrap();
         current_y += brand_font_size + 20;
