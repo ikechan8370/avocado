@@ -5,5 +5,8 @@ out.png
 resources/font/openmoji-72x72-color/*
 src/service/plugins/mod.rs
 src/service/plugins/default
+src/service/plugins/*
 !src/service/plugins/default/repeat.rs
 !src/service/plugins/default/status.rs
+config/config.toml
+data.db

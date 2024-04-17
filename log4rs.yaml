@@ -1,0 +1,16 @@
+# log4rs.yaml
+
+# 定义日志输出格式
+refresh_rate: 30 seconds
+
+appenders:
+  stdout:
+    kind: console
+    target: stdout
+    encoder:
+      pattern: "{d} {l} [{t}] - {m}{n}"
+
+root:
+  level: info
+  appenders:
+    - stdout

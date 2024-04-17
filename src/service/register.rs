@@ -63,6 +63,25 @@ pub async fn listen_to_events(bot: Arc<RwLock<Bot>>) {
             false
         };
 
+        // at
+        let at_bot = {
+            let bot = bot.read().await;
+            let uid = bot.get_uid().unwrap_or_default();
+            let uin = bot.get_uin().unwrap_or_default();
+            if let KritorEvent::Message(ref message) = event_arc.as_ref() {
+                let elements = message.elements.clone();
+                if let Some(elements) = elements.get_at_elements() {
+                    elements.iter().any(|ele| {
+                        ele.uid == uid ||  ele.uin.map(|u| u == uin).unwrap_or(false)
+                    })
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+        };
+
         for service_name in handlers.keys() {
             let service = handlers.get(service_name).unwrap();
             let service_clone = Arc::clone(service);
@@ -72,6 +91,7 @@ pub async fn listen_to_events(bot: Arc<RwLock<Bot>>) {
                 bot.clone(),
                 service_name.clone(),
                 is_master,
+                at_bot
             );
             if let KritorEvent::Message(ref message) = event_arc.as_ref() {
                 let current_contact = message.contact.clone().unwrap();

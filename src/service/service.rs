@@ -34,6 +34,7 @@ pub struct KritorContext {
     pub current_transaction_name: Arc<RwLock<Option<String>>>,
     pub store: Arc<RwLock<HashMap<String, Box<dyn Any + Send + Sync>>>>,
     pub is_master: bool,
+    pub at_bot: bool,
 }
 
 impl KritorContext {
@@ -42,6 +43,7 @@ impl KritorContext {
         bot: Arc<RwLock<Bot>>,
         service_name: String,
         is_master: bool,
+        at_bot: bool,
     ) -> Self {
         let mut s = Self {
             r#type: EventType::Message,
@@ -53,6 +55,7 @@ impl KritorContext {
             current_transaction_name: Arc::new(RwLock::new(None)),
             store: Arc::new(Default::default()),
             is_master,
+            at_bot,
         };
         match event {
             KritorEvent::Message(message) => {

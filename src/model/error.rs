@@ -120,6 +120,17 @@ impl From<std::io::Error> for Error {
     }
 }
 
+
+impl From<rusqlite::Error> for Error {
+    fn from(value: rusqlite::Error) -> Self {
+        let msg = format!("{}", value);
+        Error {
+            msg,
+            kind: Kind::Internal,
+        }
+    }
+}
+
 #[macro_export]
 macro_rules! err {
     ($msg:expr) => {

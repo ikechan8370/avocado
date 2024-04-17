@@ -12,18 +12,20 @@ use crate::model::config::{get_config_sync, notify_config_change};
 use crate::service::external::javascript::service::register_js_plugins;
 use once_cell::sync::Lazy;
 use std::error::Error;
+use log4rs::config::Logger;
 use tonic::transport::Server;
 
 pub static LOG_INIT: Lazy<()> = Lazy::new(|| {
     let config = get_config_sync();
     let level = config.log_level.unwrap_or("info".to_string());
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(level.as_str()))
-        .init();
+    log4rs::init_file("log4rs.yaml", Default::default()).unwrap();
+    // env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(level.as_str()))
+    //     .init();
 });
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    console_subscriber::init();
+    // console_subscriber::init();
     let addr = "0.0.0.0:7001".parse()?;
     register_js_plugins().await;
     notify_config_change();
